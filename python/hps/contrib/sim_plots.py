@@ -1,6 +1,6 @@
 import sys
 from ROOT import TFile, TH1D
-from lcio_tools import EventManager, Processor
+from hps.lcio.event_proc import EventManager, Processor
 
 # Multiple for conversion from GeV to MeV
 MeV = 1000.

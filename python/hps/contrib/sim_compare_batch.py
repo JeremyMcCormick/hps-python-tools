@@ -13,7 +13,6 @@ from hps.contrib.sim_plots import SimPlotsProcessor
 
 def run_process(c):
     print "Running: " + str(c)
-    print type(c)
     if isinstance(c, basestring):
         cmd = c.split()
     elif isinstance(c, tuple) or isinstance(c, list):
@@ -81,6 +80,9 @@ class SimAnalTask(AnalTask):
     
 class OverlayTask(luigi.Task):
     
+    label1 = luigi.Parameter(default="slic")
+    label2 = luigi.Parameter(default="hpssim")
+    
     def requires(self):
         return (SlicAnalTask(plot_file="slicPlots.root"), SimAnalTask(plot_file="simPlots.root"))
     
@@ -88,15 +90,29 @@ class OverlayTask(luigi.Task):
         return luigi.LocalTarget("simCompare.pdf")
     
     def run(self):
-        
-        # FIXME: use inputs instead of hard-coded file names
-        cmd = "python ComparePlots.py simCompare slicPlots.root simPlots.root slic hpssim".split()
+        cmd = "python ComparePlots.py simCompare %s %s %s %s" % (self.input()[0].path, self.input()[1].path, self.label1, self.label2)
         run_process(cmd)
         
 class SimCompareTask(luigi.WrapperTask):
     
+    force = luigi.BoolParameter(default=False)
+    
+    def __init__(self, *args, **kwargs):
+        super(luigi.WrapperTask, self).__init__(*args, **kwargs)
+        if self.force is True:
+            done = False
+            tasks = [self]
+            while not done:
+                outputs = luigi.task.flatten(tasks[0].output())
+                [os.remove(out.path) for out in outputs if out.exists()]
+                tasks += luigi.task.flatten(tasks[0].requires())
+                tasks.pop(0)
+                if len(tasks) == 0:
+                    done = True
+                    
     def requires(self):
         yield OverlayTask()
+
         
 if __name__ == "__main__":
     luigi.run()

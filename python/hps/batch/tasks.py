@@ -37,10 +37,13 @@ class SlicBaseTask(luigi.Task):
     init_macro = luigi.Parameter(default='slic_init.mac')
     output_file = luigi.Parameter(default='slicEvents.slcio')
     nevents = luigi.IntParameter(default=10000)
-    gen_macro = luigi.Parameter(default='gun.mac')
+    gen_macro = luigi.Parameter(default='slic_gun.mac')
     physics_list = luigi.Parameter(default='QGSP_BERT')
 
     def run(self):
+        
+        if not os.access(os.getcwd(), os.W_OK):
+            raise Exception("Current dir is not writable: " + os.getcwd())
 
         config = hps_config()
          
@@ -67,7 +70,6 @@ class SlicBaseTask(luigi.Task):
             run_process(cmd)
         finally:
             os.remove(run_script.name)
-            #os.unlink('fieldmap')
         
     def output(self):
         return luigi.LocalTarget(self.output_file)
@@ -83,6 +85,9 @@ class HpsSimBaseTask(luigi.Task):
     output_file = luigi.Parameter(default="simEvents.slcio")
 
     def run(self):
+        
+        if not os.access(os.getcwd(), os.W_OK):
+            raise Exception("Current dir is not writable: " + os.getcwd())
         
         config = hps_config()
         
@@ -120,7 +125,7 @@ class HpsSimBaseTask(luigi.Task):
             run_process(cmd)
         finally:
             os.remove(run_script.name)
-            #os.remove(run_macro.name)
+            os.remove(run_macro.name)
         
     def output(self):
         return luigi.LocalTarget(self.output_file)

@@ -19,12 +19,12 @@ def run_process(c, use_shell=False):
     print("Using shell: %s" % str(use_shell))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=use_shell)
     print("OUTPUT:")
-    for l in p.stdout.readlines():
-        print(l.strip())
+    for l in p.stdout:
+        print(l.decode().strip())
     print()
     print("ERRORS: ")
-    for l in p.stderr.readlines():
-        print(l.strip())
+    for l in p.stderr:
+        print(l.decode().strip())
     print()
     p.wait()
     print("returncode: " + str(p.returncode))

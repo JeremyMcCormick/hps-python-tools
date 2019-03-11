@@ -23,10 +23,11 @@ class SimAnalTask(SimAnalBaseTask):
 class OverlayTask(OverlayBaseTask):
  
     def requires(self):
-        return (SlicAnalTask(plot_file="slicPlots.root"), SimAnalTask(plot_file="simPlots.root"))
-        
+        return (SlicAnalTask(plot_file="slicPlots.root"), 
+                SimAnalTask(plot_file="simPlots.root"))
+
 class SimCompareTask(luigi.WrapperTask, CleanOutputsMixin):
-        
+            
     def __init__(self, *args, **kwargs):
             
         super(luigi.WrapperTask, self).__init__(*args, **kwargs)

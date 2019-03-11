@@ -30,6 +30,13 @@ def run_process(c):
     print()
     print("returncode: " + str(p.returncode))
 
+class hps(luigi.Config):
+    slic_setup_script = luigi.Parameter()
+    sim_setup_script = luigi.Parameter()
+    
+#        print hps().slic_setup_script
+#        print hps().sim_setup_script
+
 class SlicTask(luigi.Task):
     
     geom = luigi.Parameter(default="HPS-EngRun2015-Nominal-v3-5-3-fieldmap.lcdd")
@@ -37,6 +44,7 @@ class SlicTask(luigi.Task):
     output_file = luigi.Parameter(default="slicEvents.slcio")
     
     def run(self):        
+        # TODO: replace with shell command including env setup script
         cmd = ['slic', '-g', self.geom, '-m', self.mac]
         run_process(cmd)
         
@@ -49,6 +57,7 @@ class SimTask(luigi.Task):
     output_file = luigi.Parameter(default="simEvents.slcio")
     
     def run(self):
+        # TODO: replace with shell command including env setup script
         cmd = ['hps-sim', self.mac]
         run_process(cmd)
         
@@ -98,6 +107,7 @@ class SimCompareTask(luigi.WrapperTask):
     force = luigi.BoolParameter(default=False)
     
     def __init__(self, *args, **kwargs):
+            
         super(luigi.WrapperTask, self).__init__(*args, **kwargs)
         if self.force is True:
             done = False
@@ -112,7 +122,6 @@ class SimCompareTask(luigi.WrapperTask):
                     
     def requires(self):
         yield OverlayTask()
-
         
 if __name__ == "__main__":
     luigi.run()

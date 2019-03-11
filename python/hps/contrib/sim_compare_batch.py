@@ -1,24 +1,24 @@
 #!/usr/bin/env python2
-# -*- coding: utf-8 -*-
 """
-Compare MC output from SLIC and hps-sim by generating electron gun events,
-generating plots and overlaying them in ROOT.
+Batch job to compare MC output from SLIC and hps-sim by generating electron gun events,
+creating plots, and then overlaying them in ROOT to produce a PDF.
 
 @author: Jeremy McCormick (SLAC)
 """
 
 import luigi
-from hps.batch.tasks import SlicBaseTask, OverlayBaseTask, AnalBaseTask, SimBaseTask, CleanOutputsMixin
+
+from hps.batch.tasks import SlicBaseTask, OverlayBaseTask, SimAnalBaseTask, HpsSimBaseTask, CleanOutputsMixin
        
-class SlicAnalTask(AnalBaseTask):
+class SlicAnalTask(SimAnalBaseTask):
     
     def requires(self):
         return SlicBaseTask()
     
-class SimAnalTask(AnalBaseTask):
+class SimAnalTask(SimAnalBaseTask):
     
     def requires(self):
-        return SimBaseTask()
+        return HpsSimBaseTask()
     
 class OverlayTask(OverlayBaseTask):
  

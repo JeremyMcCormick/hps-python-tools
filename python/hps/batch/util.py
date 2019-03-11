@@ -1,28 +1,30 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
 """
-Created on Mon Mar 11 13:19:59 2019
+Utilities for batch jobs.
 
-@author: jermc
+@author: Jeremy McCormick (SLAC)
 """
 
 import subprocess
 
-def run_process(c):
-    print "Running: " + str(c)
+def run_process(c, use_shell=False):
     if isinstance(c, basestring):
         cmd = c.split()
     elif isinstance(c, tuple) or isinstance(c, list):
         cmd = c
+        if use_shell:
+            cmd = " ".join(cmd)
     else:
-        raise Exception("Bad command argument to run_process")
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        raise Exception("Bad command argument to run_process: %s" % c)
+    print("Running command: %s" % cmd)
+    print("Using shell: %s" % str(use_shell))
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=use_shell)
     print("OUTPUT:")
-    for l in p.stdout:
+    for l in p.stdout.readlines():
         print(l.strip())
     print()
     print("ERRORS: ")
-    for l in p.stderr:
+    for l in p.stderr.readlines():
         print(l.strip())
     print()
+    p.wait()
     print("returncode: " + str(p.returncode))

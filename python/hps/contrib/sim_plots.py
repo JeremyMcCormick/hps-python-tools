@@ -1,3 +1,9 @@
+"""
+Basic sim comparison plots.
+
+@author Jeremy McCormick (SLAC)
+"""
+
 import sys
 from ROOT import TFile, TH1D
 from hps.lcio.event_proc import EventManager, Processor

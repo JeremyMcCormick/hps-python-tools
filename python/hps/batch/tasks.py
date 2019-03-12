@@ -7,13 +7,8 @@ Base tasks in Luigi for batch jobs.
 import luigi
 import os
 
-from hps.batch.config import hps as hps_config
-hps_config().setup()
-
 from hps.batch.util import run_process
 from hps.batch.config import hps as hps_config
-from hps.lcio.event_proc import EventManager
-from hps.contrib.sim_plots import SimPlotsProcessor
 
 class CleanOutputsMixin:
     
@@ -78,7 +73,7 @@ class HpsSimBaseTask(luigi.Task):
     
     detector = luigi.Parameter(default='HPS-PhysicsRun2016-Pass2')
     #init_macro = luigi.Parameter(default='sim_init.mac')
-    output_file = luigi.Parameter(default='slicEvents.slcio')
+    output_file = luigi.Parameter(default='simEvents.slcio')
     nevents = luigi.IntParameter(default=10000)
     gen_macro = luigi.Parameter(default='sim_gun.mac')
     physics_list = luigi.Parameter(default='QGSP_BERT')    
@@ -139,21 +134,8 @@ class OverlayBaseTask(luigi.Task):
         return luigi.LocalTarget("simCompare.pdf")
 
     def run(self):
-        import hps.contrib as _contrib
-        compare_script = '%s/%s' % (os.path.dirname(_contrib.__file__), 'ComparePlots.py')
+        import hps.util as _util
+        compare_script = '%s/%s' % (os.path.dirname(_util.__file__), 'ComparePlots.py')
         cmd = "python %s simCompare %s %s %s %s" % (compare_script, self.input()[0].path, self.input()[1].path, self.label1, self.label2)
         run_process(cmd)
         
-class SimAnalBaseTask(luigi.Task):
-    
-    plot_file = luigi.Parameter(default="plots.root")
-    
-    def run(self):
-        processors = [SimPlotsProcessor("MySimPlotsProcessor", self.output().path)]
-        files = [self.input().path]
-        mgr = EventManager(processors, files)
-        mgr.processEvents() 
-    
-    def output(self):
-        return luigi.LocalTarget(self.plot_file)
-            

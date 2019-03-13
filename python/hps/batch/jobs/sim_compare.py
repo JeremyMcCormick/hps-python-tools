@@ -13,7 +13,7 @@ hps_config().setup()
 
 from hps.batch.tasks import SlicBaseTask, OverlayBaseTask, HpsSimBaseTask, CleanOutputsMixin
 from hps.batch.jobs.sim_plots import SimPlotsProcessor
-from hps.lcio.event_proc import EventManager
+from hps.lcio.proc import EventManager
 
 class SimAnalBaseTask(luigi.Task):
     

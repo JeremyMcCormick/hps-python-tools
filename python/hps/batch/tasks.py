@@ -25,6 +25,13 @@ class CleanOutputsMixin:
                 tasks.pop(0)
                 if len(tasks) == 0:
                     done = True
+                    
+class FileListTask(luigi.Task):
+    
+    files = luigi.ListParameter()
+    
+    def output(self):
+        [luigi.LocalTarget(f) for f in self.files]
     
 class SlicBaseTask(luigi.Task):
     
@@ -124,14 +131,42 @@ class HpsSimBaseTask(luigi.Task):
         
     def output(self):
         return luigi.LocalTarget(self.output_file)
+    
+class FilterMCBunchesBaseTask(luigi.Task):
+    
+    output_file = luigi.Parameter(default="filteredEvents.slcio")
+    ecal_hit_ecut = luigi.FloatParameter(default=0.0) # set to 0.05 for 2015 and 0.1 for 2016
+    spacing = luigi.IntParameter(default=250)
+    enable_ecal_energy_filter = luigi.BoolParameter(default=False)
+    nevents = luigi.IntParameter(2000000)
+    
+    def run(self):
+        config = hps_config()
+        bin_jar = config.hps_java_bin_jar
+        
+        cmd = ['java', '-cp', bin_jar, 'org.hps.util.FilterMCBunches',
+               '-e', str(self.spacing), '-E', str(self.ecal_hit_ecut),
+               '-w', str(self.nevents)]
+        if self.enable_ecal_energy_filter:
+            cmd.append('-d')
+        for i in luigi.task.flatten(self.input()):
+            cmd.append(i.path)
+        for o in luigi.task.flatten(self.output()):
+            cmd.append(o.path)
+        print("Running FilterMCBunches: " + " ".join(cmd))
+        run_process(cmd)
+            
+    def output(self):
+        return luigi.LocalTarget(self.output_file)
         
 class OverlayBaseTask(luigi.Task):
     
     label1 = luigi.Parameter(default="slic")
     label2 = luigi.Parameter(default="hpssim")
+    output_file = luigi.Parameter(default="simCompare.pdf")
      
     def output(self):
-        return luigi.LocalTarget("simCompare.pdf")
+        return luigi.LocalTarget(self.output_file)
 
     def run(self):
         import hps.util as _util

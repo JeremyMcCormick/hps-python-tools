@@ -11,6 +11,20 @@ from hps.batch.util import run_process
 from hps.batch.config import hps as hps_config
 from hps.batch.config import job as job_config
 
+"""
+class ListTestTask(luigi.Task):
+    
+    files = luigi.ListParameter()
+    
+    def run(self):
+        print "ListTestTask.run"
+        for f in luigi.task.flatten(input()):
+            print f
+        
+    def input(self):
+        [luigi.LocalTarget(f) for f in self.files]
+"""
+        
 class CleanOutputsMixin:
     
     force = luigi.BoolParameter(default=False)
@@ -33,6 +47,71 @@ class FileListTask(luigi.Task):
     
     def output(self):
         [luigi.LocalTarget(f) for f in self.files]
+   
+"""
+class StdhepFileListTask(luigi.Task):
+    
+    stdhep_files = luigi.ListParameter()
+    
+    def output(self):
+        [luigi.LocalTarget(f) for f in self.stdhep_files]
+"""   
+    
+class SlicStdhepBaseTask(luigi.Task):
+        
+    detector = luigi.Parameter(default=job_config().detector)
+    nevents = luigi.IntParameter(default=job_config().nevents)
+    physics_list = luigi.Parameter(default=job_config().physics_list)
+    
+    init_macro = luigi.Parameter(default='slic_init.mac')
+    output_file = luigi.Parameter(default='slicEvents.slcio')
+
+    stdhep_files = luigi.ListParameter()
+
+    def run(self):
+        
+        if not os.access(os.getcwd(), os.W_OK):
+            raise Exception("Current dir is not writable: " + os.getcwd())
+
+        config = hps_config()
+
+        slic_env = config.slic_setup_script
+       
+        lcdd_path = config.get_lcdd_path(self.detector)
+        
+        config.create_fieldmap_symlink()
+        
+        #input_files = luigi.task.flatten(self.input())
+        #if len(input_files) == 0:
+        #    raise Exception("No stdhep input files")
+                
+        run_script_name = self.task_id + '.sh'
+        run_script = open(run_script_name, 'w')
+        run_script.write('#!/bin/bash\n')
+        run_script.write('. %s\n' % slic_env)
+        run_script.write('slic -g %s -l %s -m %s -x -o %s' % 
+                         (lcdd_path, self.physics_list, self.init_macro, 
+                          self.output_file))
+        for stdhep_file in self.stdhep_files:
+            run_script.write(' -i %s' % stdhep_file)
+        run_script.write(' -r %d' % self.nevents)
+        run_script.write('\n')
+        run_script.close()
+        
+        os.chmod(run_script.name, 0700)
+        
+        cmd = './%s' % run_script.name
+
+        try:        
+            run_process(cmd)
+        finally:
+            os.remove(run_script.name)
+        
+    def output(self):
+        return luigi.LocalTarget(self.output_file)
+    
+    #def requires(self):
+    #    return StdhepFileListTask()
     
 class SlicBaseTask(luigi.Task):
         
@@ -166,7 +245,12 @@ class JobManagerBaseTask(luigi.Task):
     steering = luigi.Parameter(default=job_config().recon_steering)
 
     resource = luigi.BoolParameter(default=True)
-    output_file = luigi.Parameter("reconEvents.slcio")
+    output_file = luigi.Parameter()
+    
+    run_number = luigi.IntParameter(default=None)
+    detector = luigi.Parameter(default=None)
+    
+    nevents = luigi.IntParameter(default=None)
     
     def run(self):
         config = hps_config()
@@ -181,11 +265,18 @@ class JobManagerBaseTask(luigi.Task):
         if len(outputs) > 1:
             raise Exception("Too many outputs for this task (only one output is accepted).")
         cmd.append("-DoutputFile=%s" % os.path.splitext(outputs[0].path)[0])
+        if self.detector is not None:
+            cmd.append('-d %s' % self.detector)
+        if self.run_number is not None:
+            cmd.append('-R %d' % self.run_number)
+        if self.nevents is not None:
+            cmd.append('-n %d' % self.nevents)
         cmd.append(self.steering)
         
         print("Running JobManager with cmd: %s" % " ".join(cmd))
         
-        run_process(cmd)
+        # FIXME: For some reason passing the list results in a weird error with the run number :(
+        run_process(cmd, use_shell=True)
         
     def output(self):
         return luigi.LocalTarget(self.output_file)

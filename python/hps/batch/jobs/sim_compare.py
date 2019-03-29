@@ -20,32 +20,32 @@ class SimAnalBaseTask(luigi.Task):
     plot_file = luigi.Parameter(default="plots.root")
     
     def run(self):
-        processors = [SimPlotsProcessor("MySimPlotsProcessor", self.output().path)]
-        files = [self.input().path]
+        processors = [SimPlotsProcessor(self.output().path)]
+        files = luigi.task.flatten(self.input())
         mgr = EventManager(processors, files)
-        mgr.processEvents() 
+        mgr.process()
     
     def output(self):
         return luigi.LocalTarget(self.plot_file)
       
 class SlicAnalTask(SimAnalBaseTask):
-    
+        
     def requires(self):
         return SlicBaseTask()
     
 class SimAnalTask(SimAnalBaseTask):
-    
+        
     def requires(self):
         return HpsSimBaseTask()
     
 class OverlayTask(OverlayBaseTask):
- 
+     
     def requires(self):
-        return (SlicAnalTask(plot_file="slicPlots.root"), 
+        return (SlicAnalTask(plot_file="slicPlots.root"),
                 SimAnalTask(plot_file="simPlots.root"))
 
 class SimCompareTask(luigi.WrapperTask, CleanOutputsMixin):
-            
+                
     def __init__(self, *args, **kwargs):
             
         super(luigi.WrapperTask, self).__init__(*args, **kwargs)

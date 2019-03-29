@@ -9,6 +9,7 @@ import os
 
 from hps.batch.util import run_process
 from hps.batch.config import hps as hps_config
+from hps.batch.config import job as job_config
 
 class CleanOutputsMixin:
     
@@ -34,13 +35,14 @@ class FileListTask(luigi.Task):
         [luigi.LocalTarget(f) for f in self.files]
     
 class SlicBaseTask(luigi.Task):
+        
+    detector = luigi.Parameter(default=job_config().detector)
+    nevents = luigi.IntParameter(default=job_config().nevents)
+    physics_list = luigi.Parameter(default=job_config().physics_list)
     
-    detector = luigi.Parameter(default='HPS-PhysicsRun2016-Pass2')
     init_macro = luigi.Parameter(default='slic_init.mac')
     output_file = luigi.Parameter(default='slicEvents.slcio')
-    nevents = luigi.IntParameter(default=10000)
     gen_macro = luigi.Parameter(default='slic_gun.mac')
-    physics_list = luigi.Parameter(default='QGSP_BERT')
 
     def run(self):
         
@@ -48,7 +50,7 @@ class SlicBaseTask(luigi.Task):
             raise Exception("Current dir is not writable: " + os.getcwd())
 
         config = hps_config()
-         
+
         slic_env = config.slic_setup_script
        
         lcdd_path = config.get_lcdd_path(self.detector)
@@ -78,12 +80,12 @@ class SlicBaseTask(luigi.Task):
     
 class HpsSimBaseTask(luigi.Task):
     
-    detector = luigi.Parameter(default='HPS-PhysicsRun2016-Pass2')
-    #init_macro = luigi.Parameter(default='sim_init.mac')
+    detector = luigi.Parameter(default=job_config().detector)
+    nevents = luigi.IntParameter(default=job_config().nevents)
+    physics_list = luigi.Parameter(default=job_config().physics_list)
+    
     output_file = luigi.Parameter(default='simEvents.slcio')
-    nevents = luigi.IntParameter(default=10000)
     gen_macro = luigi.Parameter(default='sim_gun.mac')
-    physics_list = luigi.Parameter(default='QGSP_BERT')    
     output_file = luigi.Parameter(default="simEvents.slcio")
 
     def run(self):
@@ -133,17 +135,17 @@ class HpsSimBaseTask(luigi.Task):
         return luigi.LocalTarget(self.output_file)
     
 class FilterMCBunchesBaseTask(luigi.Task):
-    
-    output_file = luigi.Parameter(default="filteredEvents.slcio")
+        
     ecal_hit_ecut = luigi.FloatParameter(default=0.0) # set to 0.05 for 2015 and 0.1 for 2016
-    spacing = luigi.IntParameter(default=250)
+    spacing = luigi.IntParameter(default=job_config().event_spacing)
     enable_ecal_energy_filter = luigi.BoolParameter(default=False)
-    nevents = luigi.IntParameter(2000000)
+    nevents = luigi.IntParameter(default=job_config().nevents * job_config().event_spacing)
+    output_file = luigi.Parameter(default="filteredEvents.slcio")
     
     def run(self):
         config = hps_config()
         bin_jar = config.hps_java_bin_jar
-        
+                        
         cmd = ['java', '-cp', bin_jar, 'org.hps.util.FilterMCBunches',
                '-e', str(self.spacing), '-E', str(self.ecal_hit_ecut),
                '-w', str(self.nevents)]
@@ -159,6 +161,35 @@ class FilterMCBunchesBaseTask(luigi.Task):
     def output(self):
         return luigi.LocalTarget(self.output_file)
         
+class JobManagerBaseTask(luigi.Task):
+
+    steering = luigi.Parameter(default=job_config().recon_steering)
+
+    resource = luigi.BoolParameter(default=True)
+    output_file = luigi.Parameter("reconEvents.slcio")
+    
+    def run(self):
+        config = hps_config()
+        bin_jar = config.hps_java_bin_jar
+        
+        cmd = ['java', '-jar', bin_jar]
+        if self.resource:
+            cmd.append('-r')
+        cmd.extend(["-i%s" % i.path for i in luigi.task.flatten(self.input())])
+        
+        outputs = luigi.task.flatten(self.output())
+        if len(outputs) > 1:
+            raise Exception("Too many outputs for this task (only one output is accepted).")
+        cmd.append("-DoutputFile=%s" % os.path.splitext(outputs[0].path)[0])
+        cmd.append(self.steering)
+        
+        print("Running JobManager with cmd: %s" % " ".join(cmd))
+        
+        run_process(cmd)
+        
+    def output(self):
+        return luigi.LocalTarget(self.output_file)
+    
 class OverlayBaseTask(luigi.Task):
     
     label1 = luigi.Parameter(default="slic")

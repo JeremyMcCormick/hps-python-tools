@@ -9,41 +9,50 @@ import luigi
 from hps.batch.config import hps as hps_config
 hps_config().setup()
 
-#from hps.batch.tasks import SlicBaseTask, HpsSimBaseTask, OverlayBaseTask, CleanOutputsMixin
-#from hps.batch.tasks import FilterMCBunchesBaseTask
-
-from hps.batch.tasks import FilterMCBunchesBaseTask, SlicBaseTask
+from hps.batch.tasks import FilterMCBunchesBaseTask, SlicBaseTask, JobManagerBaseTask
+from hps.batch.jobs.sim_compare import SimAnalBaseTask
 
 class SlicFilterTask(FilterMCBunchesBaseTask):
     
     def requires(self):
-        return SlicBaseTask()
+        return SlicBaseTask(output_file="slicEvents.slcio", nevents=100)
 
     def outputs(self):
         return luigi.LocalTarget(self.output_file)
 
-# FIXME: dummy task
-class SlicReadoutTask(luigi.Task):
-    
-    def run(self):
-        pass
-    
+class SlicReadoutTask(JobManagerBaseTask):
+        
     def requires(self):
-        return SlicFilterTask(output_file="slicFilteredEvents.slcio")
-    
-    def output(self):
-        return luigi.LocalTarget("slicReadoutEvents.slcio")
+        return SlicFilterTask(output_file="slicFilteredEvents.slcio", nevents=25000)
+        
+class SlicReconTask(JobManagerBaseTask):
+        
+    def requires(self):
 
-"""
-class SlicAnal(luigi.Task):
+        return SlicReadoutTask(steering="/org/hps/steering/readout/PhysicsRun2016TrigSingles1.lcsim",
+                               output_file="slicReadoutEvents.slcio")
+        #return SlicReadoutTask(steering="/org/hps/steering/readout/PhysicsRun2016TrigPairs1.lcsim",
+        #                       output_file="slicReadoutEvents.slcio")
+        
+class SlicReconAnalTask(SimAnalBaseTask):
+                
+    def requires(self):
+        return SlicReconTask(steering="/org/hps/steering/recon/PhysicsRun2016FullReconMC.lcsim",
+                             output_file="slicReconEvents.slcio")
     
-    output_file = luigi.Parameter(default="slicPlots.root")
+class SimReconCompareTask(luigi.WrapperTask):
+        
+    def requires(self):
+        yield SlicReconAnalTask(plot_file="slicPlots.root")
+        
+class DerpTask(luigi.Task):
+
+    derp = luigi.Parameter(default=None)
     
     def run(self):
-        pass
-    
+        print(self.derp)
+        d = self.derp
+        print(d)
+        
     def output(self):
-        return luigi.LocalTarget(self.output_file)
-    
-    #def requires(self):
-"""
+        return luigi.LocalTarget('derp.derp')

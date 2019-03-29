@@ -6,7 +6,7 @@ Basic sim comparison plots.
 
 import sys
 from ROOT import TFile, TH1D
-from hps.lcio.event_proc import EventManager, PlotsProcessor
+from hps.lcio.proc import EventManager, PlotsProcessor
 
 # Multiple for conversion from GeV to MeV
 MeV = 1000.

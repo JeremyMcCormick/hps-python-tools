@@ -39,6 +39,8 @@ class hps(luigi.Config):
             raise Exception("Field maps directory does not exist: " + self.hps_fieldmaps_dir)
             
     def get_lcdd_path(self, detector_name):
+        #print(detector_name)
+        #print(self.hps_java_dir)
         detector_dir = self.hps_java_dir + '/detector-data/detectors'
         detector_path = detector_dir + '/' + detector_name + '/' + detector_name + '.lcdd'
         if not os.path.exists(detector_path):
@@ -52,3 +54,11 @@ class hps(luigi.Config):
         else:
             os.symlink(self.hps_fieldmaps_dir, symlink_name)
             print('Created fieldmap symlink to dir: ' + self.hps_fieldmaps_dir)
+
+class job(luigi.Config):
+
+    nevents = luigi.IntParameter(default=10000)
+    detector = luigi.Parameter(default='HPS-PhysicsRun2016-Pass2')
+    physics_list = luigi.Parameter(default='QGSP_BERT')
+    recon_steering = luigi.Parameter(default='/org/hps/steering/recon/PhysicsRun2016FullReconMC.lcsim')
+    event_spacing = luigi.IntParameter(default=250)

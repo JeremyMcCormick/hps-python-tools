@@ -8,12 +8,14 @@ import luigi
 import sys, os
 
 class hps(luigi.Config):
-    
+   
+    # FIXME: Do these default rel paths even work with the hps tasks? 
     slic_setup_script = luigi.Parameter(default='slic-env.sh')
     sim_setup_script = luigi.Parameter(default='hps-sim-env.sh')
-    lcio_dir = luigi.Parameter('lcio')
-    hps_java_dir = luigi.Parameter('hps-java')
-    hps_fieldmaps_dir = luigi.Parameter('fieldmap')
+    lcio_dir = luigi.Parameter(default='lcio')
+    hps_java_dir = luigi.Parameter(default='hps-java')
+    hps_fieldmaps_dir = luigi.Parameter(default='fieldmap')
+    hps_java_bin_jar = luigi.Parameter(default='hps-java-bin.jar')
     
     def setup(self):
         if not os.path.exists(self.lcio_dir):
@@ -33,9 +35,12 @@ class hps(luigi.Config):
             raise Exception("hps-sim setup script does not exist: " + self.sim_setup_script)
         if not os.path.exists(self.hps_java_dir):
             raise Exception("hps-java dir does not exist: " + self.hps_java_dir)
+        if not os.path.exists(self.hps_fieldmaps_dir):
+            raise Exception("Field maps directory does not exist: " + self.hps_fieldmaps_dir)
             
     def get_lcdd_path(self, detector_name):
-
+        #print(detector_name)
+        #print(self.hps_java_dir)
         detector_dir = self.hps_java_dir + '/detector-data/detectors'
         detector_path = detector_dir + '/' + detector_name + '/' + detector_name + '.lcdd'
         if not os.path.exists(detector_path):
@@ -43,11 +48,17 @@ class hps(luigi.Config):
         return detector_path
     
     def create_fieldmap_symlink(self):
-        if not os.path.exists(self.hps_fieldmaps_dir):
-            raise Exception("Field maps directory does not exist: " + self.hps_fieldmaps_dir)
         symlink_name = 'fieldmap'
         if os.path.exists(symlink_name):
             print('Using existing fieldmap symlink.')
         else:
             os.symlink(self.hps_fieldmaps_dir, symlink_name)
             print('Created fieldmap symlink to dir: ' + self.hps_fieldmaps_dir)
+
+class job(luigi.Config):
+
+    nevents = luigi.IntParameter(default=10000)
+    detector = luigi.Parameter(default='HPS-PhysicsRun2016-Pass2')
+    physics_list = luigi.Parameter(default='QGSP_BERT')
+    recon_steering = luigi.Parameter(default='/org/hps/steering/recon/PhysicsRun2016FullReconMC.lcsim')
+    event_spacing = luigi.IntParameter(default=250)

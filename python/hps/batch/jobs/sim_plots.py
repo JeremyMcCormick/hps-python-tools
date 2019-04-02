@@ -6,19 +6,15 @@ Basic sim comparison plots.
 
 import sys
 from ROOT import TFile, TH1D
-from hps.lcio.event_proc import EventManager, Processor
+from hps.lcio.proc import EventManager, PlotsProcessor
 
 # Multiple for conversion from GeV to MeV
 MeV = 1000.
 
 # TODO: Inherit from PlotsProcessor
-class SimPlotsProcessor(Processor):
-
-    def __init__(self, name, plot_file_name):
-        Processor.__init__(self, name)
-        self.plot_file_name = plot_file_name    
-    
-    def startOfJob(self):
+class SimPlotsProcessor(PlotsProcessor):
+       
+    def start(self):
         self.plotfile = TFile(self.plot_file_name, "NEW")
 
         self.ecal_hit_e_h1d = TH1D("Ecal Hit Energy", "Ecal Hit Energy", 1000, 0.0, 100.0)
@@ -41,7 +37,7 @@ class SimPlotsProcessor(Processor):
     #       -Tracker hit time
     #       -Ecal hit contrib energy, position, etc.
     #       -Tracker low E to show beginning of distribution
-    def processEvent(self, event):
+    def process(self, event):
         ecal_hits = event.getCollection("EcalHits")
         n_ecal_hits = 0
         for ecal_hit in ecal_hits:
@@ -74,10 +70,6 @@ class SimPlotsProcessor(Processor):
             pdgs[pdg] += 1
         self.sim_particle_count_h1d.Fill(n_sim_particles)
            
-    def endOfJob(self):
-        self.plotfile.Write()
-        self.plotfile.Close()
-
 if __name__ == "__main__":
     plot_file_name = sys.argv[-1]
     files = sys.argv[1:len(sys.argv) - 1]
@@ -85,4 +77,4 @@ if __name__ == "__main__":
     print("output plot file: " + plot_file_name)
     processors = [SimPlotsProcessor("MySimPlotsProcessor", plot_file_name)]
     mgr = EventManager(processors, files)
-    mgr.processEvents() 
+    mgr.process() 

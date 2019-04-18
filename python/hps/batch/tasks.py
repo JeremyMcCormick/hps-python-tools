@@ -4,6 +4,13 @@ Base tasks in Luigi for batch jobs.
 @author Jeremy McCormick (SLAC)
 """
 
+"""
+TODO:
+    - LCIO command line tool
+    - EvioToLcio
+    - implement progress bar
+"""
+
 import luigi
 import os
 
@@ -56,7 +63,8 @@ class StdhepFileListTask(luigi.Task):
     def output(self):
         [luigi.LocalTarget(f) for f in self.stdhep_files]
 """   
-    
+   
+# TODO: make slic_init.mac optional 
 class SlicStdhepBaseTask(luigi.Task):
         
     detector = luigi.Parameter(default=job_config().detector)
@@ -113,6 +121,10 @@ class SlicStdhepBaseTask(luigi.Task):
     #def requires(self):
     #    return StdhepFileListTask()
     
+# TODO: 
+# - make slic_init.mac optional 
+# - set run number
+# - hps-java log config prop
 class SlicBaseTask(luigi.Task):
         
     detector = luigi.Parameter(default=job_config().detector)
@@ -234,12 +246,14 @@ class FilterMCBunchesBaseTask(luigi.Task):
             cmd.append(i.path)
         for o in luigi.task.flatten(self.output()):
             cmd.append(o.path)
-        print("Running FilterMCBunches: " + " ".join(cmd))
+        #print("Running FilterMCBunches: " + " ".join(cmd))
         run_process(cmd)
             
     def output(self):
         return luigi.LocalTarget(self.output_file)
         
+# TODO:
+# - option to install and use the local conditions db (req some updates to config as well)
 class JobManagerBaseTask(luigi.Task):
 
     steering = luigi.Parameter(default=job_config().recon_steering)
@@ -251,6 +265,14 @@ class JobManagerBaseTask(luigi.Task):
     detector = luigi.Parameter(default=None)
     
     nevents = luigi.IntParameter(default=None)
+    
+    """
+    To define vars at command line:
+    $ luigi --module my_tasks MyTask --tags '{"role": "web", "env": "staging"}'
+    """
+    define = luigi.DictParameter(default=None)
+    
+    batch = luigi.DictParameter(default=True)
     
     def run(self):
         config = hps_config()
@@ -264,16 +286,21 @@ class JobManagerBaseTask(luigi.Task):
         outputs = luigi.task.flatten(self.output())
         if len(outputs) > 1:
             raise Exception("Too many outputs for this task (only one output is accepted).")
-        cmd.append("-DoutputFile=%s" % os.path.splitext(outputs[0].path)[0])
+        if self.batch:
+            cmd.append('-b')
         if self.detector is not None:
             cmd.append('-d %s' % self.detector)
         if self.run_number is not None:
             cmd.append('-R %d' % self.run_number)
         if self.nevents is not None:
             cmd.append('-n %d' % self.nevents)
+        if self.define is not None:
+            for key, value in self.define.iteritems():
+                cmd.append('-D%s=%s' % (key, value))
+        cmd.append("-DoutputFile=%s" % os.path.splitext(outputs[0].path)[0])
         cmd.append(self.steering)
         
-        print("Running JobManager with cmd: %s" % " ".join(cmd))
+        #print("Running JobManager with cmd: %s" % " ".join(cmd))
         
         # FIXME: For some reason passing the list results in a weird error with the run number :(
         run_process(cmd, use_shell=True)
@@ -296,3 +323,18 @@ class OverlayBaseTask(luigi.Task):
         cmd = "python %s simCompare %s %s %s %s" % (compare_script, self.input()[0].path, self.input()[1].path, self.label1, self.label2)
         run_process(cmd)
         
+#class LcioToolBaseTask(luigi.Task):
+#    cmd = luigi.Parameter(default='print')
+#    def run(self):    
+#        pass
+        
+class LcioPrintBaseTask(luigi.Task):
+    lcio_cmd = luigi.Parameter(default='print')
+
+    def run(self):
+        lcio_jar = hps_config().lcio_jar
+        cmd = ['java', '-jar', lcio_jar, self.lcio_cmd]
+        for i in luigi.task.flatten(self.input()):
+            cmd.append('-f %s' % i.path)
+        run_process(cmd)
+       

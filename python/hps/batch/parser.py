@@ -47,46 +47,49 @@ def get_str_val(raw_value):
 class JSONParser:
 
     path = None
-    cmd = []
+    cmds = []
 
     def __init__(self, path):
         self.path = path
-
 
     def parse(self):
         with open(self.path) as json_file:
             data = json.load(json_file)
             luigi_node = data['Luigi']
-            self.cmd.append(luigi_node['Task'].encode('ascii', 'ignore'))
-            param_node = luigi_node['Parameters']
-            for key, value in param_node.iteritems():
-                if not (isinstance(value, bool) and value == False):
-                    self.cmd.append(("--%s" % key).encode('ascii', 'ignore'))
-                if not isinstance(value, bool):
-                    if isinstance(value, dict):                        
-                        dict_str = "{"                
-                        for dict_param_key, dict_param_value in value.iteritems():
-                            dict_str += "\"%s\":" % get_str_val(dict_param_key)                             
-                            if isinstance(dict_param_value, basestring):
-                                dict_str += "\"%s\"" % get_str_val(dict_param_value)
-                            else:
-                                dict_str += get_str_val(dict_param_value)
-                            dict_str += ","
-                        dict_str = dict_str[:-1]
-                        dict_str += "}"
-                        self.cmd.append(dict_str)
-                    elif isinstance(value, basestring):                      
-                        self.cmd.append(get_str_val(value))
-                    else:
-                        self.cmd.append(get_str_val(value))
-        print self.cmd
-        return self.cmd
+            cmd = []
+            for task_node in luigi_node:
+                cmd.append(task_node['Task'].encode('ascii', 'ignore'))
+                param_node = task_node['Parameters']
+                for key, value in param_node.iteritems():
+                    if not (isinstance(value, bool) and value == False):
+                        cmd.append(("--%s" % key).encode('ascii', 'ignore'))
+                    if not isinstance(value, bool):
+                        if isinstance(value, dict):
+                            dict_str = "{"
+                            for dict_param_key, dict_param_value in value.iteritems():
+                                dict_str += "\"%s\":" % get_str_val(dict_param_key)    
+                                if isinstance(dict_param_value, basestring):
+                                    dict_str += "\"%s\"" % get_str_val(dict_param_value)
+                                else:
+                                    dict_str += get_str_val(dict_param_value)
+                                dict_str += ","
+                            dict_str = dict_str[:-1]
+                            dict_str += "}"
+                            cmd.append(dict_str)
+                        elif isinstance(value, basestring):
+                            cmd.append(get_str_val(value))
+                        else:
+                            cmd.append(get_str_val(value))
+                self.cmds.append(cmd)
+            return self.cmds
     
 json_example = 'example.json'
 
 # luigi.run(['examples.HelloWorldTask', '--workers', '1', '--local-scheduler'])   
 if __name__ == '__main__':
-    cmd = JSONParser(json_example).parse()
-    cmd.extend(['--workers', '1', '--local-scheduler'])
-    luigi.run(cmd)
+    cmds = JSONParser(json_example).parse()
+    for cmd in cmds:
+        cmd.extend(['--workers', '1', '--local-scheduler'])
+        print("Running command: %s" % cmd)
+        luigi.run(cmd)
         

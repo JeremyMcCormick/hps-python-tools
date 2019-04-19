@@ -23,11 +23,11 @@ class ExampleTask(luigi.Task):
         print("param2 = %s" % self.param2)
         print("param3 = %s" % self.param3)
         print("param4 = %s" % self.param4)
-        print("param5 = %s" % self.param5)
+        #print("param5 = %s" % self.param5)
         print()
         
-    def requires(self):
-        return DummyTask()
+    #def requires(self):
+    #    return DummyTask()
         
 class DummyTask(luigi.Task):
 
@@ -77,3 +77,9 @@ if __name__ == '__main__':
     luigi.run(cmd)
         
 #    luigi.run(['examples.HelloWorldTask', '--workers', '1', '--local-scheduler'])
+    
+"""
+,
+            "DummyTask-param1": "dingus"
+"""
+    

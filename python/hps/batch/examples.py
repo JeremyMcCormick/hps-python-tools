@@ -22,6 +22,8 @@ class ExampleTask(luigi.Task):
     # '{"role": "web", "env": "staging"}'
     param5 = luigi.DictParameter()
     
+    param6 = luigi.ListParameter()
+    
     def run(self):
         print("Hello ExampleTask!")
         print("param1 = %s" % self.param1)

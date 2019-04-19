@@ -29,6 +29,12 @@ class JSONParser:
                             "key3": 1234,
                             "key4": 12.34
                         },
+                        "param6": [
+                            "brap",
+                            1,
+                            1.23,
+                            true
+                        ]
                         "DummyTask-param1": "dingus"
                     }
                 }
@@ -48,12 +54,10 @@ class JSONParser:
     def parse(self):
         """This is a somewhat fugly method to convert JSON into a list of tasks to run.
         
-        The JSON is returned by Python as unicode, so we have to strip out a bunch of prepends and convert to ASCII 
+        The JSON is returned by Python as unicode, so we have to strip out the type prefix and convert to ASCII 
         in order to run in Luigi.
         
-        DictParameter is generally handled correctly, but no nested dictionaries are allowed.  Boolean parameters within
-        the dictionaries (true or false) in the JSON do not seem to be parsed correctly by Luigi even though they are part 
-        of the JSON standard, so they are not allowed.  BoolParameter objects seem to work fine though.
+        DictParameter is parsed correctly, but no nested dictionaries or lists are allowed.
         """
         with open(self.path) as json_file:
             data = json.load(json_file)
@@ -65,7 +69,7 @@ class JSONParser:
                 cmd.append(task_node['Module'].encode('ascii', 'ignore'))
                 param_node = task_node['Parameters']
                 for key, value in param_node.iteritems():
-                    # setting a boolean parameter to false via the command line is not allowed due to how Luigi works
+                    # setting a boolean parameter to false is not allowed due to how Luigi works
                     if not (isinstance(value, bool) and value == False):
                         cmd.append(("--%s" % key).encode('ascii', 'ignore'))
                     # bool is turned on by just using the switch with no value
@@ -86,6 +90,20 @@ class JSONParser:
                             dict_str = dict_str[:-1]
                             dict_str += "}"
                             cmd.append(dict_str)
+                        # handle list type
+                        elif isinstance(value, list):
+                            list_str = "["
+                            for list_param_value in value:
+                                if isinstance(list_param_value, basestring):
+                                    list_str += "\"%s\"" % get_str_val(list_param_value)
+                                elif isinstance(list_param_value, bool):
+                                    list_str += str(list_param_value).lower()
+                                else:
+                                    list_str += get_str_val(list_param_value)
+                                list_str += ","
+                            list_str = list_str[:-1]
+                            list_str += "]"
+                            cmd.append(list_str)
                         elif isinstance(value, basestring):
                             # strings are stripped of type prepend and quotes and then appended
                             cmd.append(get_str_val(value))                        

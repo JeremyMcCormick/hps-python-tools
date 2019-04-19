@@ -71,11 +71,10 @@ class SlicStdhepBaseTask(luigi.Task):
     nevents = luigi.IntParameter(default=job_config().nevents)
     physics_list = luigi.Parameter(default=job_config().physics_list)
     
-    init_macro = luigi.Parameter(default='slic_init.mac')
     output_file = luigi.Parameter(default='slicEvents.slcio')
 
     stdhep_files = luigi.ListParameter()
-
+    
     def run(self):
         
         if not os.access(os.getcwd(), os.W_OK):
@@ -93,17 +92,17 @@ class SlicStdhepBaseTask(luigi.Task):
         #if len(input_files) == 0:
         #    raise Exception("No stdhep input files")
                 
+        init_macro = open('slic_init.mac', 'w')
+        init_macro.write('/lcio/fileExists append')
+        init_macro.close()
+        
         run_script_name = self.task_id + '.sh'
         run_script = open(run_script_name, 'w')
         run_script.write('#!/bin/bash\n')
         run_script.write('. %s\n' % slic_env)
-        run_script.write('slic -g %s -l %s -m %s -x -o %s' % 
-                         (lcdd_path, self.physics_list, self.init_macro, 
-                          self.output_file))
         for stdhep_file in self.stdhep_files:
-            run_script.write(' -i %s' % stdhep_file)
-        run_script.write(' -r %d' % self.nevents)
-        run_script.write('\n')
+            run_script.write('slic -g %s -l %s -m %s -i %s -o %s -r %d\n' % 
+                             (lcdd_path, self.physics_list, init_macro.name, stdhep_file, self.output_file, self.nevents))
         run_script.close()
         
         os.chmod(run_script.name, 0700)

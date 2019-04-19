@@ -16,6 +16,7 @@ class hps(luigi.Config):
     hps_java_dir = luigi.Parameter(default='hps-java')
     hps_fieldmaps_dir = luigi.Parameter(default='fieldmap')
     hps_java_bin_jar = luigi.Parameter(default='hps-java-bin.jar')
+    lcio_jar = luigi.Parameter(default='lcio-bin.jar')
     
     def setup(self):
         if not os.path.exists(self.lcio_dir):

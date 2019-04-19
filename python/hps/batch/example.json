@@ -11,7 +11,8 @@
                 "param5": {
                     "key1": "Drogo",
                     "key2": 1234,
-                    "key3": 12.34
+                    "key3": 12.34,
+                    "key4": true
                 },
                 "DummyTask-param1": "dingus"
             }

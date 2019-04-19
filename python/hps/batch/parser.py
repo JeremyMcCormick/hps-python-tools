@@ -16,6 +16,7 @@ class JSONParser:
         {
             "Luigi": [
                 {
+                    "Module": "hps.batch.examples",
                     "Task": "ExampleTask",
                     "Parameters": {
                         "param1": "turkey",
@@ -33,6 +34,9 @@ class JSONParser:
                 }
             ]
         }    
+    
+    The "Module", "Task", and "Parameter" arguments are all required (for now).
+    
     """
     
     path = None
@@ -73,7 +77,9 @@ class JSONParser:
                             for dict_param_key, dict_param_value in value.iteritems():
                                 dict_str += "\"%s\":" % get_str_val(dict_param_key)    
                                 if isinstance(dict_param_value, basestring):
-                                    dict_str += "\"%s\"" % get_str_val(dict_param_value)                                
+                                    dict_str += "\"%s\"" % get_str_val(dict_param_value)
+                                elif isinstance(dict_param_value, bool):
+                                    dict_str += str(dict_param_value).lower()
                                 else:
                                     dict_str += get_str_val(dict_param_value)
                                 dict_str += ","
@@ -81,17 +87,18 @@ class JSONParser:
                             dict_str += "}"
                             cmd.append(dict_str)
                         elif isinstance(value, basestring):
-                            # strings are converted to ASCII and appended
-                            cmd.append(get_str_val(value))
+                            # strings are stripped of type prepend and quotes and then appended
+                            cmd.append(get_str_val(value))                        
                         else:
                             # other types like float and int are just appended
                             cmd.append(get_str_val(value))
                 self.cmds.append(cmd)
-            return self.cmds    
+            return self.cmds
 
 # luigi.run(['examples.HelloWorldTask', '--workers', '1', '--local-scheduler']) 
 if __name__ == '__main__':
 
+    # single argument is JSON file to read
     json_path = 'example.json'
     if len(sys.argv) > 1:
         json_path = sys.argv[1]
@@ -99,7 +106,7 @@ if __name__ == '__main__':
     # get a list of task descriptions to run
     cmds = JSONParser(json_path).parse()
     
-    # loop over tasks and run them sequentially (dumb)
+    # loop over tasks and run them sequentially (which is dumb)
     for cmd in cmds:
         cmd.extend(['--workers', '1', '--local-scheduler'])
         print("Running command: %s" % cmd)

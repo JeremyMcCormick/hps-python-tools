@@ -1,42 +1,5 @@
 import luigi
-import json
-
-class DummyTask(luigi.Task):
-
-    param1 = luigi.Parameter(default="boggle")
-    
-    def run(self):
-        print("Hello DummyTask!")
-        print("param1 = %s" % self.param1)
-        open('DummyTaskComplete.x', 'w').close()
-        
-    def output(self):
-        return luigi.LocalTarget('DummyTaskComplete.x')
-
-class ExampleTask(luigi.Task):
-    
-    param1 = luigi.Parameter(default="foobarbaz")
-    param2 = luigi.IntParameter(default=1234)
-    param3 = luigi.FloatParameter(default=56.78)
-    param4 = luigi.BoolParameter(default=False)
-    
-    # '{"role": "web", "env": "staging"}'
-    param5 = luigi.DictParameter()
-    
-    def run(self):
-        print("Hello ExampleTask!")
-        print("param1 = %s" % self.param1)
-        print("param2 = %s" % self.param2)
-        print("param3 = %s" % self.param3)
-        print("param4 = %s" % self.param4)
-        print("param5 = %s" % self.param5)
-        open('ExampleTaskComplete.x', 'w').close()
-        
-    def requires(self):
-        return DummyTask()
-    
-    def output(self):
-        return luigi.LocalTarget('ExampleTaskComplete.x')
+import json, sys
 
 def get_str_val(raw_value):
     if isinstance(raw_value, basestring):
@@ -48,7 +11,7 @@ class JSONParser:
 
     """Parse a JSON file containing a description of a Luigi task and parameters.
     
-    For example, this JSON text describes a job using the example classes from above::
+    For example, this JSON text describes a job using the example classes from hps.batch.examples::
     
         {
             "Luigi": [
@@ -94,6 +57,8 @@ class JSONParser:
             cmd = []
             for task_node in luigi_node:
                 cmd.append(task_node['Task'].encode('ascii', 'ignore'))
+                cmd.append('--module')
+                cmd.append(task_node['Module'].encode('ascii', 'ignore'))
                 param_node = task_node['Parameters']
                 for key, value in param_node.iteritems():
                     # setting a boolean parameter to false via the command line is not allowed due to how Luigi works
@@ -122,14 +87,17 @@ class JSONParser:
                             # other types like float and int are just appended
                             cmd.append(get_str_val(value))
                 self.cmds.append(cmd)
-            return self.cmds
-    
-json_example = 'example.json'
+            return self.cmds    
 
 # luigi.run(['examples.HelloWorldTask', '--workers', '1', '--local-scheduler']) 
 if __name__ == '__main__':
+
+    json_path = 'example.json'
+    if len(sys.argv) > 1:
+        json_path = sys.argv[1]
+    
     # get a list of task descriptions to run
-    cmds = JSONParser(json_example).parse()
+    cmds = JSONParser(json_path).parse()
     
     # loop over tasks and run them sequentially (dumb)
     for cmd in cmds:

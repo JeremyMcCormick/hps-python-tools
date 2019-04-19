@@ -1,6 +1,18 @@
 import luigi
 import json
 
+class DummyTask(luigi.Task):
+
+    #param1 = luigi.Parameter(default="boggle")
+    
+    def run(self):
+        print("Hello DummyTask!")
+        #print("param1 = %s" % self.param1)
+        open('DummyTaskComplete.x', 'w').close()
+        
+    def output(self):
+        return luigi.LocalTarget('DummyTaskComplete.x')
+
 class ExampleTask(luigi.Task):
     
     param1 = luigi.Parameter(default="foobarbaz")
@@ -24,19 +36,14 @@ class ExampleTask(luigi.Task):
         print("param3 = %s" % self.param3)
         print("param4 = %s" % self.param4)
         #print("param5 = %s" % self.param5)
-        print()
+        open('ExampleTaskComplete.x', 'w').close()
         
-    #def requires(self):
-    #    return DummyTask()
-        
-class DummyTask(luigi.Task):
-
-    param1 = luigi.Parameter(default="boggle")
+    def requires(self):
+        return DummyTask()
     
-    def run(self):
-        print("Hello DummyTask!")
-        print("param1 = %s" % self.param1)
-    
+    def output(self):
+        return luigi.LocalTarget('ExampleTaskComplete.x')
+            
 class JSONParser:
 
     path = None
@@ -49,7 +56,6 @@ class JSONParser:
         with open(self.path) as json_file:
             data = json.load(json_file)
             luigi_node = data['Luigi']
-#            .encode('ascii', 'ignore')
             self.cmd.append(luigi_node['Task'].encode('ascii', 'ignore'))
             param_node = luigi_node['Parameters']
             for key, value in param_node.iteritems():
@@ -57,13 +63,10 @@ class JSONParser:
                     self.cmd.append(("--%s" % key).encode('ascii', 'ignore'))
                 if not isinstance(value, bool):
                     if isinstance(value, dict):
-                        print('dict')
                         self.cmd.append((repr(value)))
                     elif isinstance(value, basestring):                      
-                        print('str')
                         self.cmd.append(value.lstrip('u').lstrip("'").rstrip("'").encode('ascii', 'ignore'))
                     else:
-                        print('stuff')
                         self.cmd.append(str(value).encode('ascii', 'ignore'))
         print self.cmd
         return self.cmd
@@ -73,7 +76,7 @@ json_example = 'example.json'
 if __name__ == '__main__':
     cmd = JSONParser(json_example).parse()
     cmd.extend(['--workers', '1', '--local-scheduler'])
-    #print "Running cmd: " + repr(cmd)
+    print "Running cmd: " + repr(cmd)
     luigi.run(cmd)
         
 #    luigi.run(['examples.HelloWorldTask', '--workers', '1', '--local-scheduler'])

@@ -9,7 +9,8 @@ def get_str_val(raw_value):
             
 class JSONParser:
 
-    """Parse a JSON file containing a description of a Luigi task and parameters.
+    """Parse a JSON file containing a description of one or more Luigi tasks, returning a list of commands 
+    that can be passed to the luigi.run() method.
     
     For example, this JSON text describes a job using the example classes from hps.batch.examples::
     
@@ -41,8 +42,7 @@ class JSONParser:
             ]
         }    
     
-    The "Module", "Task", and "Parameter" arguments are all required (for now).
-    
+    The "Module", "Task", and "Parameter" arguments are all required (for now).    
     """
     
     path = None
@@ -52,12 +52,14 @@ class JSONParser:
         self.path = path
 
     def parse(self):
-        """This is a somewhat fugly method to convert JSON into a list of tasks to run.
+        """This is a somewhat ugly method to convert JSON into a list of tasks to run.
         
         The JSON is returned by Python as unicode, so we have to strip out the type prefix and convert to ASCII 
         in order to run in Luigi.
         
-        DictParameter is parsed correctly, but no nested dictionaries or lists are allowed.
+        DictParameter is handled correctly, but no nested dictionaries or lists are allowed within them.
+        
+        ListParameter is also handled correctly, but with similar restrictions of no nested data.
         """
         with open(self.path) as json_file:
             data = json.load(json_file)
@@ -68,8 +70,9 @@ class JSONParser:
                 cmd.append('--module')
                 cmd.append(task_node['Module'].encode('ascii', 'ignore'))
                 param_node = task_node['Parameters']
+                # loop over the parameter dictionary
                 for key, value in param_node.iteritems():
-                    # setting a boolean parameter to false is not allowed due to how Luigi works
+                    # setting a boolean parameter to false is not allowed due to how Luigi works :-(
                     if not (isinstance(value, bool) and value == False):
                         cmd.append(("--%s" % key).encode('ascii', 'ignore'))
                     # bool is turned on by just using the switch with no value
@@ -105,7 +108,7 @@ class JSONParser:
                             list_str += "]"
                             cmd.append(list_str)
                         elif isinstance(value, basestring):
-                            # strings are stripped of type prepend and quotes and then appended
+                            # strings are stripped of type prefix and quotes and then appended
                             cmd.append(get_str_val(value))                        
                         else:
                             # other types like float and int are just appended
@@ -124,7 +127,7 @@ if __name__ == '__main__':
     # get a list of task descriptions to run
     cmds = JSONParser(json_path).parse()
     
-    # loop over tasks and run them sequentially (which is dumb)
+    # loop over list of tasks and run them sequentially (which is pretty dumb)
     for cmd in cmds:
         cmd.extend(['--workers', '1', '--local-scheduler'])
         print("Running command: %s" % cmd)

@@ -64,11 +64,15 @@ class StdhepFileListTask(luigi.Task):
         [luigi.LocalTarget(f) for f in self.stdhep_files]
 """   
    
-# TODO: make slic_init.mac optional 
+# TODO: 
+# - make slic_init.mac optional
+# - set run number
+# - implement with sub-tasks so they can be run in parallel when using multiple input stdhep files
+# - refactor so there's no duplication with SlicBaseTask
 class SlicStdhepBaseTask(luigi.Task):
         
     detector = luigi.Parameter(default=job_config().detector)
-    nevents = luigi.IntParameter(default=job_config().nevents)
+    nevents = luigi.IntParameter(default=job_config().nevents) # num events to run from each stdhep file
     physics_list = luigi.Parameter(default=job_config().physics_list)
     
     output_file = luigi.Parameter(default='slicEvents.slcio')
@@ -120,10 +124,6 @@ class SlicStdhepBaseTask(luigi.Task):
     #def requires(self):
     #    return StdhepFileListTask()
     
-# TODO: 
-# - make slic_init.mac optional 
-# - set run number
-# - hps-java log config prop
 class SlicBaseTask(luigi.Task):
         
     detector = luigi.Parameter(default=job_config().detector)
@@ -253,6 +253,7 @@ class FilterMCBunchesBaseTask(luigi.Task):
         
 # TODO:
 # - option to install and use the local conditions db (req some updates to config as well)
+# - hps-java log config prop
 class JobManagerBaseTask(luigi.Task):
 
     steering = luigi.Parameter(default=job_config().recon_steering)

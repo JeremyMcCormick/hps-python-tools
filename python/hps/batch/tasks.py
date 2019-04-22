@@ -65,10 +65,10 @@ class StdhepFileListTask(luigi.Task):
 """   
    
 # TODO: 
-# - make slic_init.mac optional
 # - set run number
-# - implement with sub-tasks so they can be run in parallel when using multiple input stdhep files
-# - refactor so there's no duplication with SlicBaseTask
+# - implement with sub-tasks so they can be run in parallel when using multiple input stdhep files and then combine files using LCIO tool
+# - refactor so there's no code duplication with SlicBaseTask
+# - possible to implement input with a parameter? (e.g. if stdhep generator run first)
 class SlicStdhepBaseTask(luigi.Task):
         
     detector = luigi.Parameter(default=job_config().detector)
@@ -117,6 +117,8 @@ class SlicStdhepBaseTask(luigi.Task):
             run_process(cmd)
         finally:
             os.remove(run_script.name)
+            os.remove(init_macro.name)
+            config.remove_fieldmap_symlink()
         
     def output(self):
         return luigi.LocalTarget(self.output_file)

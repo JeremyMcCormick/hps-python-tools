@@ -1,5 +1,6 @@
-import luigi
-import json, sys
+#import luigi
+import json
+#, sys
 
 def get_str_val(raw_value):
     if isinstance(raw_value, basestring):
@@ -64,8 +65,8 @@ class JSONParser:
         with open(self.path) as json_file:
             data = json.load(json_file)
             luigi_node = data['Luigi']
-            cmd = []
             for task_node in luigi_node:
+                cmd = []
                 cmd.append(task_node['Task'].encode('ascii', 'ignore'))
                 cmd.append('--module')
                 cmd.append(task_node['Module'].encode('ascii', 'ignore'))
@@ -117,6 +118,7 @@ class JSONParser:
             return self.cmds
 
 # luigi.run(['examples.HelloWorldTask', '--workers', '1', '--local-scheduler']) 
+"""            
 if __name__ == '__main__':
 
     # single argument is JSON file to read
@@ -132,4 +134,4 @@ if __name__ == '__main__':
         cmd.extend(['--workers', '1', '--local-scheduler'])
         print("Running command: %s" % cmd)
         luigi.run(cmd)
-        
+"""     

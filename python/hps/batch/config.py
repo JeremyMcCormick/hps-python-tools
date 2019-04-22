@@ -17,6 +17,8 @@ class hps(luigi.Config):
     hps_fieldmaps_dir = luigi.Parameter(default='fieldmap')
     hps_java_bin_jar = luigi.Parameter(default='hps-java-bin.jar')
     lcio_jar = luigi.Parameter(default='lcio-bin.jar')
+   
+    fieldmap_symlink_name = 'fieldmap'
     
     def setup(self):
         if not os.path.exists(self.lcio_dir):
@@ -47,14 +49,18 @@ class hps(luigi.Config):
         if not os.path.exists(detector_path):
             raise Exception("Detector does not exist (bad name?): " + detector_name)
         return detector_path
-    
+
     def create_fieldmap_symlink(self):
-        symlink_name = 'fieldmap'
-        if os.path.exists(symlink_name):
+
+        if os.path.exists(hps.fieldmap_symlink_name):
             print('Using existing fieldmap symlink.')
         else:
-            os.symlink(self.hps_fieldmaps_dir, symlink_name)
+            os.symlink(self.hps_fieldmaps_dir, hps.fieldmap_symlink_name)
             print('Created fieldmap symlink to dir: ' + self.hps_fieldmaps_dir)
+    
+    def remove_fieldmap_symlink(self):
+        if os.path.exists(hps.fieldmap_symlink_name):
+            os.remove(hps.fieldmap_symlink_name)
 
 class job(luigi.Config):
 

@@ -5,14 +5,25 @@ Base tasks in Luigi for batch jobs.
 """
 
 """
-TODO:
-    - LCIO command line tool
+TODO List
+
+Tasks
+    - LCIO command line tool (print, count & concat)
     - EvioToLcio
+    - DQM data pipeline (mostly will put in hps.batch.jobs)
+    - eviocopy (requires EVIO project)
+
+Batch Submission
+    - bsub
+    - Auger
+    
+Features:
     - implement progress bar
+    - support input files vs command line file lists (both?)
 """
 
 import luigi
-import os
+import os, shutil
 
 from hps.batch.util import run_process
 from hps.batch.config import hps as hps_config
@@ -260,7 +271,7 @@ class JobManagerBaseTask(luigi.Task):
 
     steering = luigi.Parameter(default=job_config().recon_steering)
 
-    resource = luigi.BoolParameter(default=True)
+    resource = luigi.BoolParameter(default=True) # FIXME: must be false
     output_file = luigi.Parameter()
     
     run_number = luigi.IntParameter(default=None)
@@ -339,4 +350,93 @@ class LcioPrintBaseTask(luigi.Task):
         for i in luigi.task.flatten(self.input()):
             cmd.append('-f %s' % i.path)
         run_process(cmd)
-       
+
+class CopyFilesBaseTask(luigi.Task):
+    
+    output_dir = luigi.Parameter()
+    create_dir = luigi.BoolParameter(default=False)
+    
+    def run(self):    
+        if not os.path.isdir(self.output_dir):
+            if self.create_dir:
+                os.makedirs(self.output_dir)
+            else:
+                raise Exception("The output dir does not exist: %s" % self.output_dir)
+                
+        if not os.path.isdir(self.output_dir):
+            raise Exception("Failed to create output dir: %s" % self.output_dir)
+            
+        for i in luigi.task.flatten(self.input()):
+            print("Copying %s to %s ..." % (i.path, self.output_dir))
+            shutil.copyfile(i.path, "%s/%s" % (self.output_dir, os.path.basename(i.path)))
+        
+
+class EvioToLcioBaseTask(luigi.Task):
+
+    """
+    EvioToLcio [options] [evioFiles]
+    usage:
+     -b         enable headless mode in which plots will not show
+     -d <arg>   detector name (required)
+     -D <arg>   define a steering file variable with format -Dname=value
+     -e <arg>   event printing interval
+     -f <arg>   text file containing a list of EVIO files
+     -h         print help and exit
+     -l <arg>   path of output LCIO file
+     -m <arg>   set the max event buffer size
+     -M         use memory mapping instead of sequential reading
+     -n <arg>   maximum number of events to process in the job
+     -r         interpret steering from -x argument as a resource instead of a
+                file
+     -R <arg>   fixed run number which will override run numbers of input
+                files
+     -s <arg>   skip a number of events in each EVIO input file before
+                starting
+     -t <arg>   specify a conditions tag to use
+     -v         print EVIO XML for each event
+     -x <arg>   LCSim steeering file for processing the LCIO events
+    """
+        
+    detector = luigi.Parameter()
+    run_number = luigi.IntParameter(default=-1)
+    evio_files = luigi.ListParameter()
+    event_print_interval = luigi.IntParameter(default=-1)
+    output_file = luigi.Parameter()
+    nevents = luigi.IntParameter(default=-1)
+    steering = luigi.Parameter(default=None)
+    resource = luigi.BoolParameter(default=False)  
+    headless = luigi.BoolParameter(default=True)
+    lcio_output_file = luigi.Parameter(default=None)
+
+    def run(self):
+        config = hps_config()
+        bin_jar = config.hps_java_bin_jar
+        
+        cmd = ['java', '-cp', bin_jar, 'org.hps.evio.EvioToLcio']
+
+        cmd.append('-d %s' % self.detector)
+        if self.run_number != -1:
+            cmd.append('-R %d' % self.run_number)
+        if self.event_print_interval != -1:
+            cmd.append('-e %d' % self.event_print_interval)
+        cmd.append('-DoutputFile=%s' % self.output_file)
+        if self.nevents != -1:
+            cmd.append('-n %d' % self.nevents)
+        if self.resource:
+            cmd.append('-r')    
+        if self.steering is not None:
+            cmd.append('-x %s' % self.steering)
+        if self.headless:
+            cmd.append('-b')
+        if self.lcio_output_file is not None:
+            cmd.append('-l %s' % self.lcio_output_file)        
+        for i in self.evio_files:
+            cmd.append(i)
+            
+        print("Running EvioToLcio cmd: %s" % ' '.join(cmd))
+        
+        run_process(cmd, use_shell=True)
+        
+    def output(self):    
+        # This doesn't include the raw data output which usually we don't care about.
+        return luigi.LocalTarget("%s.slcio" % self.output_file)

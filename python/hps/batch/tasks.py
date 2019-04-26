@@ -9,8 +9,7 @@ TODO List
 
 Tasks
     - LCIO command line tool (print, count & concat)
-    - EvioToLcio
-    - DQM data pipeline (mostly will put in hps.batch.jobs)
+    - DQM data pipeline (mostly will put these tasks in hps.batch.jobs)
     - eviocopy (requires EVIO project)
 
 Batch Submission
@@ -41,6 +40,14 @@ class ListTestTask(luigi.Task):
         
     def input(self):
         [luigi.LocalTarget(f) for f in self.files]
+
+class StdhepFileListTask(luigi.Task):
+    
+    stdhep_files = luigi.ListParameter()
+    
+    def output(self):
+        [luigi.LocalTarget(f) for f in self.stdhep_files]
+
 """
         
 class CleanOutputsMixin:
@@ -65,15 +72,6 @@ class FileListTask(luigi.Task):
     
     def output(self):
         [luigi.LocalTarget(f) for f in self.files]
-   
-"""
-class StdhepFileListTask(luigi.Task):
-    
-    stdhep_files = luigi.ListParameter()
-    
-    def output(self):
-        [luigi.LocalTarget(f) for f in self.stdhep_files]
-"""   
    
 # TODO: 
 # - set run number
@@ -268,6 +266,26 @@ class FilterMCBunchesBaseTask(luigi.Task):
 # - option to install and use the local conditions db (req some updates to config as well)
 # - hps-java log config prop
 class JobManagerBaseTask(luigi.Task):
+    """
+    usage: java org.lcsim.job.JobControlManager [options] steeringFile.xml
+    -b,--batch               Run in batch mode in which plots will not be
+                              shown.
+    -D,--define <arg>        Define a variable with form [name]=[value]
+    -d,--detector <arg>      user supplied detector name (careful!)
+    -e,--event-print <arg>   Event print interval
+    -h,--help                Print help and exit
+    -i,--input-file <arg>    Add an LCIO input file to process
+    -n,--nevents <arg>       Set the max number of events to process
+    -p,--properties <arg>    Load a properties file containing variable
+                              definitions
+    -r,--resource            Use a steering resource rather than a file
+    -R,--run <arg>           user supplied run number (careful!)
+    -s,--skip <arg>          Set the number of events to skip
+    -t,--tag <arg>           conditions system tag (can be used multiple
+                              times)
+    -w,--rewrite <arg>       Rewrite the XML file with variables resolved
+    -x,--dry-run             Perform a dry run which does not process events
+    """
 
     steering = luigi.Parameter(default=job_config().recon_steering)
 
@@ -335,12 +353,8 @@ class OverlayBaseTask(luigi.Task):
         compare_script = '%s/%s' % (os.path.dirname(_util.__file__), 'ComparePlots.py')
         cmd = "python %s simCompare %s %s %s %s" % (compare_script, self.input()[0].path, self.input()[1].path, self.label1, self.label2)
         run_process(cmd)
-        
-#class LcioToolBaseTask(luigi.Task):
-#    cmd = luigi.Parameter(default='print')
-#    def run(self):    
-#        pass
-        
+       
+# TODO: test me
 class LcioPrintBaseTask(luigi.Task):
     lcio_cmd = luigi.Parameter(default='print')
 
@@ -406,7 +420,8 @@ class EvioToLcioBaseTask(luigi.Task):
     steering = luigi.Parameter(default=None)
     resource = luigi.BoolParameter(default=False)  
     headless = luigi.BoolParameter(default=True)
-    lcio_output_file = luigi.Parameter(default=None)
+    write_raw_output = luigi.BoolParameter(default=False)
+    raw_output_file = luigi.Parameter(default='raw.slcio') # usually not used
 
     def run(self):
         config = hps_config()
@@ -428,7 +443,7 @@ class EvioToLcioBaseTask(luigi.Task):
             cmd.append('-x %s' % self.steering)
         if self.headless:
             cmd.append('-b')
-        if self.lcio_output_file is not None:
+        if self.write_raw_output:
             cmd.append('-l %s' % self.lcio_output_file)        
         for i in self.evio_files:
             cmd.append(i)
@@ -437,6 +452,6 @@ class EvioToLcioBaseTask(luigi.Task):
         
         run_process(cmd, use_shell=True)
         
-    def output(self):    
+    def output(self):
         # This doesn't include the raw data output which usually we don't care about.
         return luigi.LocalTarget("%s.slcio" % self.output_file)

@@ -125,6 +125,10 @@ class DQMPipelineDatabase:
     def error(self, ID, error_msg):
         qry = "update pipeline set error_msg = '%s' where id = %d" % (error_msg, ID)
         self.cur.execute(qry)
+        
+    def aggregated(self, ID):
+        qry = "update pipeline set aggregated = 1 where id = %d" % ID
+        self.cur.execute(qry)
 
 def dqm_to_evio(dqm_file_name):
     dirname = os.path.dirname(dqm_file_name)
@@ -172,7 +176,7 @@ class HistAddTask(luigi.Task):
                      dqm_files[run_number] = []
                 dqm_files[run_number].append(dqm_file)
 
-            # TODO Each of these should probably be a seperate task
+            # TODO Each of these should probably be a separate task
             for run_number, filelist in dqm_files.iteritems():
                 cmd = ['hadd']
                 targetfile = '%s/hps_%06d_dqm.root' % (self.output_dir, run_number)
@@ -185,6 +189,11 @@ class HistAddTask(luigi.Task):
                     cmd.append(oldtargetfile)
                 cmd.append(' '.join(filelist))
                 run_process(cmd, use_shell=True)
+                for f in filelist:
+                    rec = db.find_dqm(f)[0]
+                    db.aggregated(rec[0])
+                    db.commit()
+                    logging.info("Marked DQM file '%s' as aggregated." % f)
         finally:
             db.close()
 
@@ -259,7 +268,8 @@ class EvioFileProcessorTask(luigi.Task):
             for i in luigi.task.flatten(self.input()):
                 evio_info = EvioFileUtility(i.path)
                 ID = db.find_evio(evio_info.path)[0][0]
-                db.submit(ID, 0) # FIXME: dummy batch ID 
+                db.submit(ID, 0) # FIXME: dummy batch ID
+                db.commit()
                 tasks.append(EvioToLcioBaseTask(evio_files=[evio_info.path],
                                                 detector=self.detector,
                                                 output_file=evio_info.dqm_name(),
@@ -317,29 +327,3 @@ class EvioFileScannerTask(luigi.Task):
 
     def complete(self):
         return self.ran
-
-"""
-class EvioFileTarget(luigi.LocalTarget):
-
-    def __init__(self, ID, evio_file_path):
-        luigi.LocalTarget.__init__(self, evio_file_path)
-        self.ID = ID
-
-class EvioFileDatabaseTarget(luigi.Target):
-
-    def __init__(self, db, evio_file_path):
-        self.db = db
-        self.evio_file_path
-
-    def exists(self):
-        return self.db.evio_file_exists(self.evio_file_path)
-
-class DQMFileDatabaseTarget(luigi.Target):
-
-    def __init__(self, db, dqm_file_path):
-        self.db = db
-        self.dqm_file_path = dqm_file_path
-
-    def exists(self):
-        return self.db.dqm_file_exists(self.dqm_file_path)
-"""

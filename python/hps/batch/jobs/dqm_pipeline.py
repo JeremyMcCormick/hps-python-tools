@@ -1,25 +1,36 @@
 import luigi
-import os, glob
+import os, glob, shutil
 import MySQLdb
 
-from hps.batch.config import hps as hps_config
-hps_config().setup()
-
+#from hps.batch.config import hps as hps_config
+#hps_config().setup()
 from hps.batch.config import job as job_config
 
 from hps.batch.tasks import EvioToLcioBaseTask
+from hps.batch.util import run_process
 
-# TODO:
-# - tasks to aggregate the ROOT files by run number
+"""
+Steps:
+- scan for EVIO files
+- insert db record for new EVIO file
+- run recon & DQM job
+- update db with DQM file and batch ID
+- add DQM output to combined file
+- update db aggregated flag
+- copy combined file to web dir
+"""
 
+"""
+FileScanner <- EvioFile <- DatabaseInsert <- RunReconAndDQM <- DatabaseUpdate <- HistAdd
+"""
 
 class EvioFileUtility:
     """EVIO file utility to get various information from the file name."""
-    
+
     def __init__(self, evio_file_path):
-        self.evio_file_path = evio_file_path
-        self.basename = os.path.basename(evio_file_path)
-    
+        self.path = evio_file_path
+        self.basename = os.path.basename(self.path)
+
     def seq(self):
         return int(os.path.splitext(self.basename)[1][1:])
 
@@ -28,36 +39,50 @@ class EvioFileUtility:
 
     def basename_noext(self):
         return os.path.splitext(self.basename)[0].replace('.evio', '')
-    
+
     def basename(self):
         return self.basename
-    
+
     def recon_name(self):
         return '%s-%d_recon' % (self.basename_noext(), self.seq())
 
+    def dqm_name(self):
+        return '%s-%d_dqm' % (self.basename_noext(), self.seq())
+
 class DQMPipelineDatabase:
     """Interface to the pipeline database."""
-    
+
     user = 'dqm-user'
     passwd = '12345'
     db = 'dqm'
     #url = 'hpsdb.jlab.org'
     url = 'localhost'
-        
+
     def __init__(self):
-        self.conn = MySQLdb.connect(host=self.url, user=self.user, passwd=self.passwd, db=self.db) 
+        self.conn = MySQLdb.connect(host=self.url, user=self.user, passwd=self.passwd, db=self.db)
         self.cur = self.conn.cursor()
-    
+
     def insert(self, evio_file_path, run_number, file_seq):
         qry = "insert into pipeline (run_number, evio_file_path, file_seq) values (%d, '%s', %d)" % (run_number, evio_file_path, file_seq)
-        print(qry)
+        #print(qry)
         self.cur.execute(qry)
-        
+        return self.conn.insert_id()
+
+    def evio_file_exists(self, evio_file_path):
+        qry = "select id from pipeline where evio_file_path = '%s'" % evio_file_path
+        self.cur.execute(qry)
+        return len(self.cur.fetchall())
+
+    def dqm_file_exists(self, dqm_file_path):
+        qry = "select id from pipeline where dqm_file_path = '%s'" % dqm_file_path
+        self.cur.execute(qry)
+        return len(self.cur.fetchall())
+
     def exists(self, run_number, file_seq):
         qry = "select id from pipeline where run_number = %d and file_seq = %d" % (run_number, file_seq)
         self.cur.execute(qry)
         return len(self.cur.fetchall())
-        
+
     def get_id(self, run_number, file_seq):
         qry = "select id from pipeline where run_number = %d and file_seq = %d" % (run_number, file_seq)
         self.cur.execute(qry)
@@ -65,11 +90,12 @@ class DQMPipelineDatabase:
 
     def commit(self):
         self.conn.commit()
-        
-    def update(self, ID, recon_file_path, dqm_file_path):
-        qry = "update pipeline set id = %d, recon_file_path = '%s', dqm_file_path = '%s')" % (ID, recon_file_path, dqm_file_path)
+
+    def update(self, ID, dqm_file_path):
+        qry = "update pipeline set dqm_file_path = '%s' where id = %d" % (dqm_file_path, ID)
+        #print(qry)
         self.cur.execute(qry)
-    
+
     def submit(self, ID, batch_id):
         qry = "update pipeline set batch_id = %d where id = %d" % (ID, batch_id)
         self.cur.execute(qry)
@@ -78,109 +104,233 @@ class DQMPipelineDatabase:
         qry = "select batch_id from pipeline where id = %d" % (ID)
         self.cur.execute(qry)
         return self.cur.fetchall()[0][0] is not None;
-        
+
+    def delete(self, ID):
+        self.cur.execute("delete from pipeline where id = %d" % ID)
+
     def close(self, commit=True):
-        if commit:
-            self.conn.commit()
+        #if commit:
+        #    self.conn.commit()
         self.conn.close()
-        
-class ReconAndDQMTask(luigi.Task):
-    """Task to run the recon and DQM in one job."""
-    
-    evio_file = luigi.Parameter()
-    output_file = luigi.Parameter()
+
+    def find_dqm(self, dqm_file_path):
+        qry = "select * from pipeline where dqm_file_path = '%s'"
+        self.cur.execute(qry)
+        return self.cur.fetchall()
+
+    def find_evio(self, evio_file_path):
+        qry = "select * from pipeline where evio_file_path = '%s'" % evio_file_path
+        print(qry)
+        self.cur.execute(qry)
+        return self.cur.fetchall()
+
+    def error(self, ID, error_msg):
+        qry = "update pipeline set error_msg = '%s' where id = %d" % (error_msg, ID)
+        self.cur.execute(qry)
+
+class DQMPipelineTask(luigi.WrapperTask):
+
+    def __init__(self, *args, **kwargs):
+        super(luigi.WrapperTask, self).__init__(*args, **kwargs)
+
+    def requires(self):
+        yield HistAddTask()
+
+def dqm_to_evio(dqm_file_name):
+    dirname = os.path.dirname(dqm_file_name)
+    evio_file_name = os.path.basename(dqm_file_name.replace('.root', '').replace('_dqm',''))
+    i = int(evio_file_name.rfind('-') + 1)
+    seq = int(evio_file_name[i:])
+    evio_file_name = '%s.evio.%d' % (evio_file_name[:10], seq)
+    return '%s/%s' % (dirname, evio_file_name)
+
+class HistAddTask(luigi.Task):
+
+    """
+    Usage: /sw/root/install/bin/hadd [-f[fk][0-9]] [-k] [-T] [-O] [-a]
+            [-n maxopenedfiles] [-cachesize size] [-j ncpus] [-v [verbosity]]
+            targetfile source1 [source2 source3 ...]
+    """
+
+    output_dir = luigi.Parameter(default=os.getcwd())
+
+    def __init__(self, *args, **kwargs):
+        super(HistAddTask, self).__init__(*args, **kwargs)
+        self.ran = False
+        self.output_files = []
+
+    def requires(self):
+        return DatabaseUpdateTask()
+
+    def run(self):
+        db = DQMPipelineDatabase()
+        try:
+            dqm_files = {}
+            for i in luigi.task.flatten(self.input()):
+                dqm_file = i.path
+                rec = db.find_dqm(dqm_file)[0]
+                run_number = rec[1]
+                if run_number not in dqm_files:
+                    dqm_files[run_number] = []
+                dqm_files[run_number].append(dqm_file)
+
+            # TODO Each of these should be separate task
+            for run_number, filelist in dqm_files.iteritems():
+                cmd = ['hadd']
+                targetfile = 'hps_%06d_dqm.root' % run_number
+                self.output_files.append(targetfile)
+                cmd.append(targetfile)
+                if os.path.exists(targetfile):
+                    oldtargetfile = '%s.old' % targetfile
+                    shutil.copy(targetfile, oldtargetfile)
+                    cmd.append(oldtargetfile)
+                cmd.append(' '.join(filelist))
+                run_process(cmd, shell=True)
+        finally:
+            db.close()
+
+        self.ran = True
+
+    def complete(self):
+        return self.ran
+
+    def output(self):
+        return [luigi.LocalTarget(o) for o in self.output_files]
+
+class DatabaseUpdateTask(luigi.Task):
+    """Update database with names of DQM files."""
+
+    def __init__(self, *args, **kwargs):
+        super(DatabaseUpdateTask, self).__init__(*args, **kwargs)
+        self.ran = False
+
+    def requires(self):
+        return EvioFileProcessorTask()
+
+    def run(self):
+
+        db = DQMPipelineDatabase()
+
+        try:
+            for i in luigi.task.flatten(self.input()):
+                dqm_file_name = i.path
+                evio_file_name = dqm_to_evio(dqm_file_name)
+                print(">>> Looking up rec for '%s' ..." % evio_file_name)
+                rec = db.find_evio(evio_file_name)[0]
+                if os.path.exists(dqm_file_name) and os.path.getsize(dqm_file_name) > 0:
+                    print("Batch job created DQM file '%s' OKAY!" % dqm_file_name)
+                    db.update(rec[0], dqm_file_name)
+                else:
+                    print("ERROR: DQM file '%s' does not exist!" % dqm_file_name)
+                    db.error(rec[0], 'DQM file does not exist or is invalid after batch job.')
+                db.commit()
+        finally:
+            db.close()
+
+        self.ran = True
+
+    def complete(self):
+        return self.ran
+
+class EvioFileProcessorTask(luigi.Task):
+    """Runs recon and DQM on list of input EVIO files."""
+
     detector = luigi.Parameter(job_config().detector)
     steering = luigi.Parameter(default='Run2016ReconPlusDataQuality.lcsim') # FIXME: default should be steering resource in git
     output_dir = luigi.Parameter(default=os.getcwd())
-    nevents = luigi.Parameter(default=10)
-    
+    nevents = luigi.Parameter(default=-1)
+
+    def __init__(self, *args, **kwargs):
+        super(EvioFileProcessorTask, self).__init__(*args, **kwargs)
+        self.ran = False
+
+    def requires(self):
+        return EvioFileScannerTask()
+
     def run(self):
-        evio_file_info = EvioFileUtility(self.evio_file)
-        yield EvioToLcioBaseTask(evio_files=[self.evio_file],
-                                 detector=self.detector,
-                                 output_file=self.output_file,
-                                 steering=self.steering,
-                                 run_number=evio_file_info.run_number(), 
-                                 nevents=self.nevents)
-        
+        if self.ran:
+            return
+        tasks = []
+        for i in luigi.task.flatten(self.input()):
+            evio_info = EvioFileUtility(i.path)
+            tasks.append(EvioToLcioBaseTask(evio_files=[evio_info.path],
+                                            detector=self.detector,
+                                            output_file=evio_info.dqm_name(),
+                                            steering=self.steering,
+                                            run_number=evio_info.run_number(),
+                                            nevents=self.nevents,
+                                            output_ext='.root'))
+        self.ran = True
+        yield tasks
+
+    def complete(self):
+        return self.ran
+
     def output(self):
-        return (luigi.LocalTarget('%s.slcio' % self.output_file), 
-                luigi.LocalTarget('%s.root' % self.output_file))
-        
-# TODO: 
-# - Only scan for files newer than a date parameter
-# - Date parameter from database
-# - Make check of db for existing record a separate task
-class DQMPipelineTask(luigi.WrapperTask):
-    """Top level task to run the pipeline."""
-    
+        return [luigi.LocalTarget('%s/%s%s' % (self.output_dir,
+                                               EvioFileUtility(i.path).dqm_name(),
+                                               '.root'))
+                for i in luigi.task.flatten(self.input())]
+
+class EvioFileScannerTask(luigi.Task):
+
     evio_dir = luigi.Parameter(default=os.getcwd())
-    
-    detector = luigi.Parameter(job_config().detector)
-    steering = luigi.Parameter(default='Run2016ReconPlusDataQuality.lcsim')
-    
-    output_dir = luigi.Parameter(default=os.getcwd())
-            
+
+    def __init__(self, *args, **kwargs):
+        super(EvioFileScannerTask, self).__init__(*args, **kwargs)
+        self.output_files = []
+        self.ran = False
+
     def run(self):
-        evio_glob = glob.glob('%s/*.evio.*' % (self.evio_dir))
-               
-        print("EVIO files:")
-        print(evio_glob)
-        
         db = DQMPipelineDatabase()
-        
-        for e in evio_glob:
-            
-            evio_file = EvioFileUtility(e)            
-            run_number = evio_file.run_number()
-            seq = evio_file.seq()
-  
-            print("Processing (file, run_number, seq) = ('%s', %d, %d)" % (e, run_number, seq))
 
-            exists = db.exists(run_number, seq)
-            ID = None
-            if exists:
-                ID = db.get_id(run_number, seq)
-            submitted = False
-            if not exists:
-                print("Inserting new EVIO file '%s' into db ..." % e)
-                db.insert(e, run_number, seq) # TODO: get id from insert
-                db.commit()
-                ID = db.get_id(run_number, seq)
-            else:
-                print("EVIO file already exists so checking if submitted ...")                
-                submitted = db.submitted(ID)
-                            
-            print("EVIO file has ID %d" % ID)
-            
-            if not exists or (exists and not submitted):
-                                
-                print("Executing DQM job for '%s' ..." % e)
-                                
-                recon_name = evio_file.recon_name()
-                batch_id = 0 # FIXME: dummy batch ID
-                db.submit(ID, batch_id)
-                db.commit()
-                yield ReconAndDQMTask(evio_file=e,
-                                      output_file='%s/%s' % (self.output_dir, recon_name))
-                
-                print("Done running DQM for '%s'" % (e))
-
-                recon_file_name = recon_name + '.slcio'
-                dqm_file_name = recon_name + '.root'
-                
-                if os.path.exists(recon_file_name) and os.path.exists(dqm_file_name):
-                    print("Batch job was successful!")
-                    db.update(ID, recon_file_name, dqm_file_name)
+        try:
+            evio_glob = glob.glob('%s/*.evio.*' % (self.evio_dir))
+            for e in evio_glob:
+                evio_info = EvioFileUtility(e)
+                run_number = evio_info.run_number()
+                seq = evio_info.seq()
+                if not db.exists(evio_info.run_number(), evio_info.seq()):
+                    self.output_files.append(e)
+                    print("Inserting (file, run_number, seq) = ('%s', %d, %d) into db ..." % (evio_info.path, run_number, seq))
+                    db.insert(evio_info.path, run_number, seq)
                     db.commit()
                 else:
-                    print("Recon or DQM file is missing after batch job!")
-                    # TODO: reset batch_id to null here to indicate it needs resubmission
-            else:
-                print("EVIO file %d in run %d is already submitted!" % (seq, run_number))
-                  
-        db.close()
-                
+                    print("EVIO file '%s' with run %d and seq %d is already in database!" % (evio_info.path, run_number, seq))
+            if not len(self.output_files):
+                raise Exception('No new EVIO files found!')
+        finally:
+            db.close()
+        self.ran = True
+
+    def output(self):
+        return [luigi.LocalTarget(o) for o in self.output_files]
+
     def complete(self):
-        return False
-    
+        return self.ran
+
+"""
+class EvioFileTarget(luigi.LocalTarget):
+
+    def __init__(self, ID, evio_file_path):
+        luigi.LocalTarget.__init__(self, evio_file_path)
+        self.ID = ID
+
+class EvioFileDatabaseTarget(luigi.Target):
+
+    def __init__(self, db, evio_file_path):
+        self.db = db
+        self.evio_file_path
+
+    def exists(self):
+        return self.db.evio_file_exists(self.evio_file_path)
+
+class DQMFileDatabaseTarget(luigi.Target):
+
+    def __init__(self, db, dqm_file_path):
+        self.db = db
+        self.dqm_file_path = dqm_file_path
+
+    def exists(self):
+        return self.db.dqm_file_exists(self.dqm_file_path)
+"""

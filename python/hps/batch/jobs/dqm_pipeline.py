@@ -3,8 +3,6 @@ import os, glob, shutil
 import logging
 import MySQLdb
 
-#from hps.batch.config import hps as hps_config
-#hps_config().setup()
 from hps.batch.config import job as job_config
 
 from hps.batch.tasks import EvioToLcioBaseTask
@@ -98,7 +96,7 @@ class DQMPipelineDatabase:
         self.cur.execute(qry)
 
     def submit(self, ID, batch_id):
-        qry = "update pipeline set batch_id = %d where id = %d" % (ID, batch_id)
+        qry = "update pipeline set batch_id = %d where id = %d" % (batch_id, ID)
         self.cur.execute(qry)
 
     def submitted(self, ID):

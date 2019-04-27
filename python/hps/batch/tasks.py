@@ -415,14 +415,16 @@ class EvioToLcioBaseTask(luigi.Task):
     run_number = luigi.IntParameter(default=-1)
     evio_files = luigi.ListParameter()
     event_print_interval = luigi.IntParameter(default=-1)
-    output_file = luigi.Parameter()
+    output_file = luigi.Parameter() # no extension
     nevents = luigi.IntParameter(default=-1)
     steering = luigi.Parameter(default=None)
     resource = luigi.BoolParameter(default=False)  
     headless = luigi.BoolParameter(default=True)
     write_raw_output = luigi.BoolParameter(default=False)
     raw_output_file = luigi.Parameter(default='raw.slcio') # usually not used
-
+    
+    output_ext = luigi.Parameter(default='.slcio')
+    
     def run(self):
         config = hps_config()
         bin_jar = config.hps_java_bin_jar
@@ -447,11 +449,9 @@ class EvioToLcioBaseTask(luigi.Task):
             cmd.append('-l %s' % self.lcio_output_file)        
         for i in self.evio_files:
             cmd.append(i)
-            
-        print("Running EvioToLcio cmd: %s" % ' '.join(cmd))
-        
+                    
         run_process(cmd, use_shell=True)
         
     def output(self):
         # This doesn't include the raw data output which usually we don't care about.
-        return luigi.LocalTarget("%s.slcio" % self.output_file)
+        return luigi.LocalTarget("%s.%s" % (self.output_file, self.output_ext))

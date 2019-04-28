@@ -50,6 +50,8 @@ class EvioFileUtility:
     def dqm_name(self):
         return '%s-%d_dqm' % (self.basename_noext(), self.seq())
 
+# TODO: 
+# - set database params from luigi config
 class DQMPipelineDatabase:
     """Interface to the pipeline database."""
 
@@ -174,7 +176,7 @@ class HistAddTask(luigi.Task):
                      dqm_files[run_number] = []
                 dqm_files[run_number].append(dqm_file)
 
-            # TODO Each of these should probably be a separate task
+            # TODO: Each of these should probably be a separate task by run number
             for run_number, filelist in dqm_files.iteritems():
                 cmd = ['hadd']
                 targetfile = '%s/hps_%06d_dqm.root' % (self.output_dir, run_number)

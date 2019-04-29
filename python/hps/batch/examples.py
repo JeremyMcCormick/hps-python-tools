@@ -20,18 +20,21 @@ class ExampleTask(luigi.Task):
     param4 = luigi.BoolParameter(default=False)
     
     # '{"role": "web", "env": "staging"}'
-    param5 = luigi.DictParameter(default={})
+    param5 = luigi.ListParameter(default=["foo", "bar", "baz"])
     
-    param6 = luigi.ListParameter(default=[])
+    param6 = luigi.DictParameter(default={"hinkle": "dinkle"})
     
+    def requires(self):
+        return DummyTask()
+        
     def run(self):
         print(">>>> ExampleTask.run")
         print("    param1 = %s" % self.param1)
         print("    param2 = %s" % self.param2)
         print("    param3 = %s" % self.param3)
         print("    param4 = %s" % self.param4)
-        print("    param5 = %s" % self.param5)
-        print("    param6 = %s" % self.param6)
+        print("    param5 = %s" % str(self.param5))
+        print("    param6 = %s" % str(self.param6))
         open('%s.done' % self.task_id, 'w').close()
             
     def output(self):

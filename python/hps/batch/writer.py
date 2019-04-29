@@ -1,5 +1,6 @@
 import luigi
 import json
+from importlib import import_module
 
 from hps.batch.examples import ExampleTask
 
@@ -49,8 +50,25 @@ class JSONWriter:
             if task != self.task:
                 k = '%s-%s' % (task.__class__.__name__, k)
             d[k] = v
-                
+
+class JSONTask(luigi.Task):
+
+    json_file = luigi.Parameter(default='task.json')
+    task_name = luigi.Parameter(default='hps.batch.examples.ExampleTask')
+    
+    def run(self):        
+        print(">>>> creating task '%s'" % self.task_name)
+        module_path, class_name = self.task_name.rsplit('.', 1)
+        import_module(module_path)
+        task = eval(class_name)()
+        print('>>>> building task')
+        luigi.build([task], workers=0, local_scheduler=True)
+        print('>>>> writing JSON')
+        JSONWriter(task, self.json_file).write()
+        print('>>>> done!')
+        
+    def output(self):
+        return luigi.LocalTarget(self.json_file)
+        
 if __name__ == '__main__':
-    task = ExampleTask()
-    luigi.build([task], workers=0, local_scheduler=True)
-    JSONWriter(task, 'example_task.json').write()
+    luigi.build([JSONTask], workers=1, local_scheduler=True)

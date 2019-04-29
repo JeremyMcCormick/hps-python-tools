@@ -94,21 +94,3 @@ class JSONParser:
                     cmd.append(get_str_val(value))
         return cmd
 
-# luigi.run(['examples.HelloWorldTask', '--workers', '1', '--local-scheduler']) 
-"""            
-if __name__ == '__main__':
-
-    # single argument is JSON file to read
-    json_path = 'example.json'
-    if len(sys.argv) > 1:
-        json_path = sys.argv[1]
-    
-    # get a list of task descriptions to run
-    cmds = JSONParser(json_path).parse()
-    
-    # loop over list of tasks and run them sequentially (which is pretty dumb)
-    for cmd in cmds:
-        cmd.extend(['--workers', '1', '--local-scheduler'])
-        print("Running command: %s" % cmd)
-        luigi.run(cmd)
-"""     

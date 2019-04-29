@@ -10,6 +10,9 @@ auger_tmpl = """<Request>
 <Project name="hps"/>
 <Track name="simulation"/>
 <Name name="${name}"/>
+<Variable name="PYTHONPATH" value="${pythonpath}"/>
+<Variable name="LD_LIBRARY_PATH" value="${ldpath}"/>
+<Variable name="PATH" value="${path}"/>
 <Command><![CDATA[
 ${command}
 ]]></Command>
@@ -38,7 +41,6 @@ class AugerWriter:
 class AugerTask(luigi.Task):
     
     auger_file = luigi.Parameter(default='auger.xml')
-    job_name = luigi.Parameter(default='MyJob')
     check_host = luigi.BoolParameter(default=False)
     output_src = luigi.Parameter()
     output_dest = luigi.Parameter()
@@ -64,9 +66,12 @@ class AugerTask(luigi.Task):
                 raise Exception('Host is not at JLab!')
         p = {
                 'user': '%s@jlab.org' % getpass.getuser(),
-                'name': self.job_name,
+                'name': self.task.__class__.__name__,
                 'command': 'cmdline.py %s' % self.json_file.path,
-                'input_src': self.json_file.path,
+                'pythonpath': os.getenv('PYTHONPATH'),
+                'ldpath': os.getenv('LD_LIBRARY_PATH'),
+                'path': os.getenv('PATH'),
+                'input_src': os.path.abspath(self.json_file.path),
                 'input_dest': os.path.basename(self.json_file.path),
                 'output_src': self.output_src,
                 'output_dest': self.output_dest,

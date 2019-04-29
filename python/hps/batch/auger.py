@@ -1,6 +1,6 @@
 from string import Template
 import luigi
-import socket, getpass
+import socket, getpass, os
 
 from hps.batch.writer import JSONTask
 from hps.batch.examples import ExampleTask
@@ -26,7 +26,6 @@ class AugerWriter:
     def __init__(self, outfile = 'auger.xml', parameters = {}):
         self.outfile = outfile
         self.parameters = parameters
-        print("PARAMETERS: %s" % str(self.parameters))
         
     def write(self):
         tmpl = Template(auger_tmpl)
@@ -38,36 +37,49 @@ class AugerWriter:
             
 class AugerTask(luigi.Task):
     
-    dryrun = luigi.BoolParameter(default=False)
-    #json_file = luigi.Parameter(default='task.json')
     auger_file = luigi.Parameter(default='auger.xml')
     job_name = luigi.Parameter(default='MyJob')
-    #task = luigi.Parameter(default='hps.batch.examples.ExampleTask')
-      
+    check_host = luigi.BoolParameter(default=False)
+    output_src = luigi.Parameter()
+    output_dest = luigi.Parameter()
+    
+    def __init__(self, *args, **kwargs):
+        super(AugerTask, self).__init__(*args, **kwargs)
+        self.task = None
+
+    def set_task(self, task):
+        self.task = task
+           
     def requires(self):
-        return JSONTask()
+        json = JSONTask()
+        json.set_task(self.task)
+        return json
     
     def run(self):
+        if self.task is None:
+            raise Exception('AugerTask requires luigi task to be set.')
         self.json_file = self.input()
-        #if 'jlab.org' not in socket.gethostname():
-        #    raise Exception('Host is not at JLab!')
-        #luigi.build([self.task], workers=0, local_scheduler=True)
+        if self.check_host:
+            if 'jlab.org' not in socket.gethostname():
+                raise Exception('Host is not at JLab!')
         p = {
                 'user': '%s@jlab.org' % getpass.getuser(),
                 'name': self.job_name,
                 'command': 'cmdline.py %s' % self.json_file.path,
-                'input_src': '/dummy/input.txt',
-                'input_dest': 'input.txt',
-                'output_src': 'output.txt',
-                'output_dest': '/dummy/output.txt',
+                'input_src': self.json_file.path,
+                'input_dest': os.path.basename(self.json_file.path),
+                'output_src': self.output_src,
+                'output_dest': self.output_dest,
                 'stderr': 'stderr.log',
-                'stdout': 'stdout.log'            
-        }    
+                'stdout': 'stdout.log'         
+        }
         writer = AugerWriter(parameters=p)
         writer.write()
-        
+                        
     def output(self):
         return luigi.LocalTarget(self.auger_file)
 
 if __name__ == '__main__':
-    luigi.build([AugerTask()], workers=1, local_scheduler=True)
+    task = AugerTask(output_src='output.txt', output_dest='/dummy/output.txt')
+    task.set_task(ExampleTask())
+    luigi.build([task], workers=1, local_scheduler=True)

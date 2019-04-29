@@ -54,21 +54,20 @@ class JSONWriter:
 class JSONTask(luigi.Task):
 
     json_file = luigi.Parameter(default='task.json')
-    task_name = luigi.Parameter(default='hps.batch.examples.ExampleTask')
     
-    def run(self):        
-        print(">>>> creating task '%s'" % self.task_name)
-        module_path, class_name = self.task_name.rsplit('.', 1)
-        import_module(module_path)
-        task = eval(class_name)()
-        print('>>>> building task')
-        luigi.build([task], workers=0, local_scheduler=True)
-        print('>>>> writing JSON')
-        JSONWriter(task, self.json_file).write()
-        print('>>>> done!')
+    def __init__(self, *args, **kwargs):
+        super(JSONTask, self).__init__(*args, **kwargs)
+        self.task = None
+    
+    def set_task(self, task):
+        self.task = task
+    
+    def run(self):     
+        luigi.build([self.task], workers=0, local_scheduler=True)
+        JSONWriter(self.task, self.json_file).write()
         
     def output(self):
         return luigi.LocalTarget(self.json_file)
         
 if __name__ == '__main__':
-    luigi.build([JSONTask], workers=1, local_scheduler=True)
+    luigi.build([JSONTask(task=ExampleTask())], workers=1, local_scheduler=True)

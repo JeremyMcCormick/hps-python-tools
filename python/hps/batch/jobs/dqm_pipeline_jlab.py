@@ -274,9 +274,9 @@ class SubmitEvioJobsTask(luigi.Task):
                 evio_info = EvioFileUtility(i.path)
                 ID = db.find_evio(evio_info.path)[0][0]
                 
-                cmdlines = ['exec bash']                
+                cmdlines = ['exec bash']
                 cmdlines.append('source %s/bin/activate python3' % dqm_config().conda_dir)
-                cmdlines.append('export PYTHONPATH=%s') % dqm_config().hpspythontools_dir)
+                cmdlines.append('export PYTHONPATH=%s/python' % dqm_config().hpspythontools_dir)
                 cmdlines.append(' '.join(['luigi',
                                           '--module hps.batch.jobs',
                                           'EvioToLcioBaseTask',

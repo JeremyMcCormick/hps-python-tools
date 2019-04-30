@@ -24,6 +24,7 @@ ${command}
 class AugerWriter:
     
     def __init__(self, tmpl = auger_tmpl, outfile = 'auger.xml', parameters = {}):
+        self.tmpl = tmpl
         self.outfile = outfile
         self.parameters = parameters
         

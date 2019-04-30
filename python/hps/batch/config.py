@@ -87,5 +87,5 @@ class dqm(luigi.Config):
 
     # FIXME: hard-coded paths for JLab
     conda_dir = luigi.Parameter(default='/group/hps/hps_soft/anaconda')
-    root_dir = luigi.Parameter(default='/group/hps/hps_soft/root')
+    root_dir = luigi.Parameter(default='/apps/root/6.12.06')
     hpspythontools_dir = luigi.Parameter(default='/group/hps/hps_soft/hps-python-tools')

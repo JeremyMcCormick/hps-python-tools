@@ -240,7 +240,6 @@ auger_tmpl = """<Request>
 ${command}
 ]]></Command>
 <Job>
-<Input src="${input_src}" dest="${input_dest}"/>
 <Output src="${output_src}" dest="${output_dest}"/>
 <Stderr dest="${stderr}"/>
 <Stdout dest="${stdout}"/>
@@ -294,15 +293,13 @@ class SubmitEvioJobsTask(luigi.Task):
                         'track': 'debug', # FIXME: make parameter
                         'name': 'MyJob', # FIXME: make parameter
                         'command': '\n'.join(cmdlines),
-                        'input_src': os.path.abspath(self.json_file.path),
-                        'input_dest': os.path.basename(self.json_file.path),
                         'output_src': '%s.root' % evio_info.dqm_name(),
                         'output_dest': '%s/%s.root' % (self.output_dir, evio_info.dqm_name()),
                         'stderr': 'stderr.log',
                         'stdout': 'stdout.log'
                 }
                 
-                AugerWriter(parameters=parameters).write()
+                AugerWriter(tmpl=auger_tmpl, parameters=parameters).write()
                 
                 cmd = ['jsub', '-xml', 'auger.xml']
                 print("Auger cmd: %s" % ' '.join(cmd))

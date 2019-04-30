@@ -22,7 +22,7 @@ Features:
 """
 
 import luigi
-import os, shutil
+import os, shutil, stat
 
 from hps.batch.util import run_process
 from hps.batch.config import hps as hps_config
@@ -118,7 +118,7 @@ class SlicStdhepBaseTask(luigi.Task):
                              (lcdd_path, self.physics_list, init_macro.name, stdhep_file, self.output_file, self.nevents))
         run_script.close()
         
-        os.chmod(run_script.name, 0700)
+        os.chmod(run_script.name, stat.S_IEXEC)
         
         cmd = './%s' % run_script.name
 

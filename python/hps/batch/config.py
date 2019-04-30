@@ -25,6 +25,8 @@ class hps(luigi.Config):
     fieldmap_symlink_name = 'fieldmap'
     
     def setup(self):
+        
+        # TODO: LCIO setup in separate method (often don't need it).
         if not os.path.exists(self.lcio_dir):
             raise Exception("LCIO dir does not exist: " + self.lcio_dir)
         lcio_python_dir = self.lcio_dir + '/python'
@@ -36,6 +38,7 @@ class hps(luigi.Config):
             sys.path.index(lcio_python_dir)
         except:
             sys.path.append(lcio_python_dir)
+            
         if not os.path.exists(self.slic_setup_script):
             raise Exception("SLIC setup script does not exist: " + self.slic_setup_script)
         if not os.path.exists(self.sim_setup_script):
@@ -73,3 +76,16 @@ class job(luigi.Config):
     physics_list = luigi.Parameter(default='QGSP_BERT')
     recon_steering = luigi.Parameter(default='/org/hps/steering/recon/PhysicsRun2016FullReconMC.lcsim')
     event_spacing = luigi.IntParameter(default=250)
+    
+class dqm(luigi.Config):
+    
+    user = luigi.Parameter(default='dqm-user')
+    passwd = luigi.Parameter(default='12345')
+    db = luigi.Parameter(default='dqm')    
+    url = 'hpsdb.jlab.org'
+    #url = luigi.Parameter(default='localhost')
+
+    # FIXME: hard-coded paths for JLab
+    conda_dir = luigi.Parameter(default='/group/hps/hps_soft/anaconda')
+    root_dir = luigi.Parameter(default='/group/hps/hps_soft/root')
+    hpspythontools_dir = luigi.Parameter(default='/group/hps/hps_soft/hps-python-tools')

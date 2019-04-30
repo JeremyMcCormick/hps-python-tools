@@ -4,6 +4,7 @@ import sys
 import luigi
 from hps.batch.parser import JSONParser
 
+# luigi.run(['examples.HelloWorldTask', '--workers', '1', '--local-scheduler']) 
 if __name__ == '__main__':
 
     # single argument is JSON file to read

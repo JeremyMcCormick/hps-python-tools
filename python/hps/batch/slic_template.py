@@ -13,21 +13,20 @@ class JSONTemplate:
     def generate(self):
         with open(self.template_name) as jsonfile:
             json_in = json.load(jsonfile)
-            stdhep_patterns = json_in['Luigi'][0]['Parameters']['stdhep-files']
+            stdhep_patterns = json_in['Parameters']['stdhep-files']
             stdhep_files = []
             for stdhep_pattern in stdhep_patterns:
                 stdhep_files.extend(glob.glob(stdhep_pattern))
-            output_tasks = {}
-            output_tasks['Luigi'] = []
-            with open(template_name, 'r') as tmpl_file:
+            output_tasks = []
+            with open(template_name, 'r') as tmpl_file:                
                 tmpl_data = tmpl_file.read().replace('\n', '')
                 tmpl = Template(tmpl_data)
                 for stdhep_file in stdhep_files:
                     output_file = 'slic_%s.slcio' % os.path.splitext(stdhep_file)[0]
                     sub = tmpl.substitute(output_file=output_file)
                     str_data = json.loads(sub)
-                    str_data['Luigi'][0]['Parameters']['stdhep-files'] = [stdhep_file]
-                    output_tasks['Luigi'].append(str_data['Luigi'][0])
+                    str_data['Parameters']['stdhep-files'] = [stdhep_file]
+                    output_tasks.append(str_data)
                     #print(str_data)  
             print(json.dumps(output_tasks, indent=4, sort_keys=True))
             with open(self.json_name, 'w') as jsonout:

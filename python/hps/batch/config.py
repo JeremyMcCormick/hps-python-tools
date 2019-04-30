@@ -7,6 +7,10 @@ Luigi configuration for HPS batch jobs.
 import luigi
 import sys, os
 
+# TODO:
+# - hps-java might be better handled by having a version like '4.4-SNAPSHOT' and then getting from local repo or downloading as necessary
+# - download jars from Nexus
+
 class hps(luigi.Config):
    
     # FIXME: Do these default rel paths even work with the hps tasks? 

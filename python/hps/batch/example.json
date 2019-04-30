@@ -1,27 +1,23 @@
 {
-    "Luigi": [
-        {
-            "Module": "hps.batch.examples",
-            "Task": "ExampleTask",            
-            "Parameters": {
-                "param1": "turkey",
-                "param2": 5678,
-                "param3": 3.14,
-                "param4": true,
-                "param5": {
-                    "key1": "Drogo",
-                    "key2": 1234,
-                    "key3": 12.34,
-                    "key4": true
-                },
-                "param6": [
-                    "foo",
-                    1234,
-                    12.34,
-                    true                
-                ],
-                "DummyTask-param1": "dingus"
-            }
-        }
-    ]
+    "Module": "hps.batch.examples",
+    "Task": "ExampleTask",            
+    "Parameters": {
+        "param1": "turkey",
+        "param2": 5678,
+        "param3": 3.14,
+        "param4": true,
+        "param5": {
+            "key1": "Drogo",
+            "key2": 1234,
+            "key3": 12.34,
+            "key4": true
+        },
+        "param6": [
+            "foo",
+            1234,
+            12.34,
+            true                
+        ],
+        "DummyTask-param1": "dingus"
+    }
 }

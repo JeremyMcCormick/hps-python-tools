@@ -422,8 +422,7 @@ class EvioToLcioBaseTask(luigi.Task):
     headless = luigi.BoolParameter(default=True)
     write_raw_output = luigi.BoolParameter(default=False)
     raw_output_file = luigi.Parameter(default='raw.slcio') # usually not used
-    
-    output_ext = luigi.Parameter(default='.slcio')
+    output_ext = luigi.Parameter(default='.slcio') # override for .root or .aida
     
     def run(self):
         config = hps_config()
@@ -454,4 +453,4 @@ class EvioToLcioBaseTask(luigi.Task):
         
     def output(self):
         # This doesn't include the raw data output which usually we don't care about.
-        return luigi.LocalTarget("%s.%s" % (self.output_file, self.output_ext))
+        return luigi.LocalTarget("%s%s" % (self.output_file, self.output_ext))

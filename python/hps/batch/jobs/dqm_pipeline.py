@@ -3,8 +3,6 @@ import os, glob, shutil
 import logging
 import MySQLdb
 
-#from hps.batch.config import hps as hps_config
-#hps_config().setup()
 from hps.batch.config import job as job_config
 
 from hps.batch.tasks import EvioToLcioBaseTask
@@ -52,6 +50,8 @@ class EvioFileUtility:
     def dqm_name(self):
         return '%s-%d_dqm' % (self.basename_noext(), self.seq())
 
+# TODO: 
+# - set database params from luigi config
 class DQMPipelineDatabase:
     """Interface to the pipeline database."""
 
@@ -98,7 +98,7 @@ class DQMPipelineDatabase:
         self.cur.execute(qry)
 
     def submit(self, ID, batch_id):
-        qry = "update pipeline set batch_id = %d where id = %d" % (ID, batch_id)
+        qry = "update pipeline set batch_id = %d where id = %d" % (batch_id, ID)
         self.cur.execute(qry)
 
     def submitted(self, ID):
@@ -176,7 +176,7 @@ class HistAddTask(luigi.Task):
                      dqm_files[run_number] = []
                 dqm_files[run_number].append(dqm_file)
 
-            # TODO Each of these should probably be a separate task
+            # TODO: Each of these should probably be a separate task by run number
             for run_number, filelist in dqm_files.iteritems():
                 cmd = ['hadd']
                 targetfile = '%s/hps_%06d_dqm.root' % (self.output_dir, run_number)

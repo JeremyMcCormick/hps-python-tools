@@ -6,6 +6,11 @@ Utilities for batch jobs.
 
 import subprocess
 
+try:
+    basestring
+except NameError:
+    basestring = str
+
 def run_process(c, use_shell=False):
     if isinstance(c, basestring):
         cmd = c.split()

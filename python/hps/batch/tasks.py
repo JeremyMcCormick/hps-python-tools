@@ -222,7 +222,7 @@ class HpsSimBaseTask(luigi.Task):
         run_script.write('hps-sim %s\n' % run_macro.name)
         run_script.close()
         
-        os.chmod(run_script.name, 0700)
+        os.chmod(run_script.name, stat.S_IEXEC)
         
         cmd = './%s' % run_script.name
         

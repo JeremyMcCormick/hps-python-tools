@@ -167,7 +167,7 @@ class SlicBaseTask(luigi.Task):
                           self.gen_macro, self.output_file, self.nevents))
         run_script.close()
         
-        os.chmod(run_script.name, 0700)
+        os.chmod(run_script.name, stat.S_IEXEC)
         
         cmd = './%s' % run_script.name
 

@@ -284,7 +284,7 @@ class SubmitEvioJobsTask(luigi.Task):
                                           '--detector %s' % self.detector,
                                           '--output-file %s' % evio_info.dqm_name(),
                                           '--resource',
-                                          '--steering ' % self.steering,
+                                          '--steering %s' % self.steering,
                                           '--run-number %d' % evio_info.run_number(),
                                           '--nevents %d' % self.nevents,
                                           '--output-ext .root']))

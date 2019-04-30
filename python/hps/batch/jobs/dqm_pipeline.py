@@ -97,12 +97,12 @@ class DQMPipelineDatabase:
         qry = "update pipeline set dqm_file_path = '%s' where id = %d" % (dqm_file_path, ID)
         self.cur.execute(qry)
 
-    def submit(self, ID, batch_id):
-        qry = "update pipeline set batch_id = %d where id = %d" % (batch_id, ID)
+    def submit(self, ID, job_id):
+        qry = "update pipeline set job_id = %d where id = %d" % (job_id, ID)
         self.cur.execute(qry)
 
     def submitted(self, ID):
-        qry = "select batch_id from pipeline where id = %d" % (ID)
+        qry = "select job_id from pipeline where id = %d" % (ID)
         self.cur.execute(qry)
         return self.cur.fetchall()[0][0] is not None;
 

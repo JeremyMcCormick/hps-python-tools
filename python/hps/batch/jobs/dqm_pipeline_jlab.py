@@ -277,7 +277,7 @@ class SubmitEvioJobsTask(luigi.Task):
                 cmdlines.append('source %s/bin/activate python3' % dqm_config().conda_dir)
                 cmdlines.append('export PYTHONPATH=%s/python' % dqm_config().hpspythontools_dir)
                 cmdlines.append(' '.join(['luigi',
-                                          '--module hps.batch.jobs',
+                                          '--module hps.batch.tasks',
                                           'EvioToLcioBaseTask',
                                           """--evio-files '["%s"]'""" % evio_info.path,
                                           '--detector %s' % self.detector,

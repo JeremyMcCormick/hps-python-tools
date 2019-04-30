@@ -1,12 +1,12 @@
 import luigi
-import os, glob, shutil
-import logging
+import os, glob, shutil, getpass, logging, subprocess
 import MySQLdb
 
 from hps.batch.config import job as job_config
+from hps.batch.config import dqm as dqm_config
 
-from hps.batch.tasks import EvioToLcioBaseTask
 from hps.batch.util import run_process
+from hps.batch.auger import AugerWriter
 
 """
 Steps:
@@ -17,12 +17,6 @@ Steps:
 - add DQM output to combined file
 - update db aggregated flag
 - copy combined file to web dir
-"""
-
-"""
-Deps:
-    
-EvioFileScannerTask <- EvioFileProcessorTask <- DatabaseUpdateTask <- HistAddTask <- DQMPipelineTask
 """
 
 class EvioFileUtility:
@@ -50,16 +44,14 @@ class EvioFileUtility:
     def dqm_name(self):
         return '%s-%d_dqm' % (self.basename_noext(), self.seq())
 
-# TODO: 
-# - set database params from luigi config
 class DQMPipelineDatabase:
     """Interface to the pipeline database."""
 
-    user = 'dqm-user'
-    passwd = '12345'
-    db = 'dqm'
+    user = dqm_config().user
+    passwd = dqm_config().passwd
+    db = dqm_config().db
     #url = 'hpsdb.jlab.org'
-    url = 'localhost'
+    url = dqm_config().url
 
     def __init__(self):
         self.conn = MySQLdb.connect(host=self.url, user=self.user, passwd=self.passwd, db=self.db)
@@ -129,6 +121,20 @@ class DQMPipelineDatabase:
     def aggregated(self, ID):
         qry = "update pipeline set aggregated = 1 where id = %d" % ID
         self.cur.execute(qry)
+        
+    def jobs(self):
+        qry = "select ID, job_id, job_status from pipeline where job_id not null and job_status != 'C'"
+        self.cur.execute(qry)
+        return self.cur.fetchall()
+    
+    def update_job_status(self, ID, job_status):
+        qry = "update pipeline set job_status = '%s' where id = %d" % (job_status, ID)
+        self.cur.execute(qry)
+        
+    def not_aggregated(self):
+        qry = "select ID, dqm_file_path from pipeline where job_status = 'C' and aggregated = 0"
+        self.cur.execute(qry)
+        return self.cur.fetchall()
 
 def dqm_to_evio(dqm_file_name):
     dirname = os.path.dirname(dqm_file_name)
@@ -138,158 +144,183 @@ def dqm_to_evio(dqm_file_name):
     evio_file_name = '%s.evio.%d' % (evio_file_name[:10], seq)
     return '%s/%s' % (dirname, evio_file_name)
 
-class DQMPipelineTask(luigi.WrapperTask):
+def run_from_dqm(dqm_file_name):
+    basename = os.path.basename(dqm_file_name)
+    return int(basename[5:11])
 
-    def __init__(self, *args, **kwargs):
-        super(luigi.WrapperTask, self).__init__(*args, **kwargs)
-
-    def requires(self):
-        yield HistAddTask()
-
-class HistAddTask(luigi.Task):
-
+class AggregateTask(luigi.Task):
+    """Task that will aggregate ROOT QDM files into a single output file by run number.
+    
+    The files for each run number are aggregated using a list of tasks yielded in the run() method.
     """
-    Usage: /sw/root/install/bin/hadd [-f[fk][0-9]] [-k] [-T] [-O] [-a]
-            [-n maxopenedfiles] [-cachesize size] [-j ncpus] [-v [verbosity]]
-            targetfile source1 [source2 source3 ...]
-    """
-
+    
     output_dir = luigi.Parameter(default=os.getcwd())
 
     def __init__(self, *args, **kwargs):
-        super(HistAddTask, self).__init__(*args, **kwargs)
+        super(AggregateTask, self).__init__(*args, **kwargs)
         self.ran = False
         self.output_files = []
 
     def requires(self):
-        return DatabaseUpdateTask()
-
+        return AggregateFileListTask()
+    
     def run(self):
+        if self.ran:
+            return
         db = DQMPipelineDatabase()
         try:
+            tasks = []
             dqm_files = {}
             for i in luigi.task.flatten(self.input()):
-                dqm_file = i.path
-                rec = db.find_dqm(dqm_file)[0]
-                run_number = rec[1]
+                dqm_file = i.path 
+                run_number = run_from_dqm(dqm_file)
                 if run_number not in dqm_files:
                      dqm_files[run_number] = []
                 dqm_files[run_number].append(dqm_file)
-
-            # TODO: Each of these should probably be a separate task by run number
-            for run_number, filelist in dqm_files.iteritems():
-                cmd = ['hadd']
+            for run_number, filelist in dqm_files:
                 targetfile = '%s/hps_%06d_dqm.root' % (self.output_dir, run_number)
                 self.output_files.append(targetfile)
-                cmd.append(targetfile)
-                if os.path.exists(targetfile):
-                    oldtargetfile = '%s.old' % targetfile
-                    shutil.copy(targetfile, oldtargetfile)
-                    os.remove(targetfile)
-                    cmd.append(oldtargetfile)
-                cmd.append(' '.join(filelist))
-                run_process(cmd, use_shell=True)
-                for f in filelist:
-                    rec = db.find_dqm(f)[0]
-                    db.aggregated(rec[0])
-                    db.commit()
-                    logging.info("Marked DQM file '%s' as aggregated." % f)
+                tasks.append(HistAddTask(run_number=run_number, target_file=targetfile))
+            yield tasks
+
         finally:
             db.close()
 
         self.ran = True
-
-    def complete(self):
-        return self.ran
 
     def output(self):
         return [luigi.LocalTarget(o) for o in self.output_files]
 
-class DatabaseUpdateTask(luigi.Task):
-    """Update database with names of DQM files."""
+class HistAddTask(luigi.Task):
+    """Task to run the ROOT 'hadd' utility to aggrebate DQM files by run number.
+    
+    Usage: /sw/root/install/bin/hadd [-f[fk][0-9]] [-k] [-T] [-O] [-a]
+            [-n maxopenedfiles] [-cachesize size] [-j ncpus] [-v [verbosity]]
+            targetfile source1 [source2 source3 ...]
+    """    
 
+    run_number = luigi.IntParameter()
+    targetfile = luigi.Parameter()
+    
     def __init__(self, *args, **kwargs):
-        super(DatabaseUpdateTask, self).__init__(*args, **kwargs)
-        self.ran = False
-
-    def requires(self):
-        return EvioFileProcessorTask()
-
+        super(HistAddTask, self).__init__(*args, **kwargs)
+        
     def run(self):
-
+        
         db = DQMPipelineDatabase()
 
         try:
-            for i in luigi.task.flatten(self.input()):
-                dqm_file_name = i.path
-                evio_file_name = dqm_to_evio(dqm_file_name)
-                rec = db.find_evio(evio_file_name)[0]
-                if os.path.exists(dqm_file_name) and os.path.getsize(dqm_file_name) > 0:
-                    logging.info("Batch job created DQM file '%s' OKAY!" % dqm_file_name)
-                    db.update(rec[0], dqm_file_name)
-                else:
-                    logging.error("DQM file '%s' does not exist!" % dqm_file_name)
-                    db.error(rec[0], 'DQM file does not exist or is invalid after batch job.')
+            cmd = ['. %s/bin/thisroot.sh && hadd' % dqm_config().root_dir]
+            cmd.append(self.targetfile)
+            if os.path.exists(self.targetfile):
+                oldtargetfile = '%s.old' % self.targetfile
+                shutil.copy(self.targetfile, oldtargetfile)
+                os.remove(self.targetfile)
+                cmd.append(oldtargetfile)
+            dqm_files = [i.path for i in luigi.task.flatten(self.input())]
+            cmd.append(' '.join(dqm_files))
+            run_process(cmd, use_shell=True)
+            for f in dqm_files:
+                rec = db.find_dqm(f)[0]
+                db.aggregated(rec[0])
                 db.commit()
+                logging.info("Marked DQM file '%s' as aggregated." % f)
         finally:
             db.close()
 
-        self.ran = True
-
     def output(self):
-        return [luigi.LocalTarget(o.path) for o in luigi.task.flatten(self.input())]
+        return luigi.LocalTarget(self.targetfile)
 
-    def complete(self):
-        return self.ran
+auger_tmpl = """<Request>
+<Email email="${user}" request="false" job="false"/>
+<Project name="hps"/>
+<Track name="${track}"/>
+<Name name="${name}"/>
+<Command><![CDATA[
+${command}
+]]></Command>
+<Job>
+<Input src="${input_src}" dest="${input_dest}"/>
+<Output src="${output_src}" dest="${output_dest}"/>
+<Stderr dest="${stderr}"/>
+<Stdout dest="${stdout}"/>
+</Job>
+</Request>"""
 
-class EvioFileProcessorTask(luigi.Task):
-    """Runs recon and DQM on list of input EVIO files."""
+class SubmitEvioJobsTask(luigi.Task):
+    """Submits the batch jobs to run recon and DQM on input EVIO files."""
 
     detector = luigi.Parameter(job_config().detector)
-    steering = luigi.Parameter(default='Run2016ReconPlusDataQuality.lcsim') # FIXME: default should be steering resource in git
+    steering = luigi.Parameter(default='/org/hps/steering/production/Run2016ReconPlusDataQuality.lcsim') # FIXME: default should be steering resource in git
     output_dir = luigi.Parameter(default=os.getcwd())
     nevents = luigi.Parameter(default=-1)
+    
+    submit = luigi.BoolParameter(default=False)
 
     def __init__(self, *args, **kwargs):
-        super(EvioFileProcessorTask, self).__init__(*args, **kwargs)
+        super(SubmitEvioJobsTask, self).__init__(*args, **kwargs)
         self.ran = False
 
     def requires(self):
         return EvioFileScannerTask()
 
     def run(self):
-        if self.ran:
-            return
         
         db = DQMPipelineDatabase()
         
         try:
-            tasks = []
             for i in luigi.task.flatten(self.input()):
+
                 evio_info = EvioFileUtility(i.path)
                 ID = db.find_evio(evio_info.path)[0][0]
-                db.submit(ID, 0) # FIXME: dummy batch ID
-                db.commit()
-                tasks.append(EvioToLcioBaseTask(evio_files=[evio_info.path],
-                                                detector=self.detector,
-                                                output_file=evio_info.dqm_name(),
-                                                steering=self.steering,
-                                                run_number=evio_info.run_number(),
-                                                nevents=self.nevents,
-                                                output_ext='.root'))
-            self.ran = True
-            yield tasks
+                
+                cmdlines = ['exec bash']                
+                cmdlines.append('source %s/bin/activate python3' % dqm_config().conda_dir)
+                cmdlines.append('export PYTHONPATH=%s') % dqm_config().hpspythontools_dir)
+                cmdlines.append(' '.join(['luigi',
+                                          '--module hps.batch.jobs',
+                                          'EvioToLcioBaseTask',
+                                          """--evio-files '["%s"]'""" % evio_info.path,
+                                          '--detector ' % self.detector,
+                                          '--output-file ' % evio_info.dqm_name(),
+                                          '--resource',
+                                          '--steering ' % self.steering,
+                                          '--run-number %d' % evio_info.run_number(),
+                                          '--nevents %d' % self.nevents,
+                                          '--output-ext .root']))
+                
+                parameters = {
+                        'user': '%s@jlab.org' % getpass.getuser(),
+                        'track': 'debug', # FIXME: make parameter
+                        'name': 'MyJob', # FIXME: make parameter
+                        'command': '\n'.join(cmdlines),
+                        'input_src': os.path.abspath(self.json_file.path),
+                        'input_dest': os.path.basename(self.json_file.path),
+                        'output_src': '%s.root' % evio_info.dqm_name(),
+                        'output_dest': '%s/%s.root' % (self.output_dir, evio_info.dqm_name()),
+                        'stderr': 'stderr.log',
+                        'stdout': 'stdout.log'
+                }
+                
+                AugerWriter(parameters=parameters).write()
+                
+                cmd = ['jsub', '-xml', 'auger.xml']
+                print("Auger cmd: %s" % ' '.join(cmd))
+                if self.submit:
+                    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+                    job_id = -1
+                    for l in p.stdout:
+                        l = l.decode().strip()
+                        if "<jsub>" in l:
+                            job_id = int(l[l.find('<jobIndex>')+10:l.find('</jobIndex>')])
+                    print("Submitted '%s' with job ID %d" % (str(cmd), job_id))
+                    db.submit(ID, job_id)
+                    db.commit()
+                else:
+                    print("Job not submitted because submit is set to false!")
+                
         finally:
             db.close()
-
-    def complete(self):
-        return self.ran
-
-    def output(self):
-        return [luigi.LocalTarget('%s/%s%s' % (self.output_dir,
-                                               EvioFileUtility(i.path).dqm_name(),
-                                               '.root'))
-                for i in luigi.task.flatten(self.input())]
 
 class EvioFileScannerTask(luigi.Task):
 
@@ -327,3 +358,50 @@ class EvioFileScannerTask(luigi.Task):
 
     def complete(self):
         return self.ran
+    
+class UpdateJobStatus(luigi.Task):
+    """Standalone task to update the status of the batch jobs in the database."""
+        
+    statuses = ('C','R','Q','H','A')
+    
+    def run(self):
+        
+        db = DQMPipelineDatabase()
+        
+        try:
+            jobs = db.jobs()
+            for job in jobs:
+               cur_status = job[2]
+               cmd = 'jobstat -j %d' % job[1]
+               p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+               for l in p.stdout:
+                   l = l.decode().strip()
+                   if l in UpdateJobStatus.statuses:
+                       new_status = l
+                       if new_status in UpdateJobStatus.statuses:
+                           if new_status != cur_status:
+                               db.update_job_status(job[0], new_status)
+                               db.commit()
+        finally:
+            db.close()
+            
+class AggregateFileListTask(luigi.Task):
+    """Task to get a list of files to aggregate using the ROOT utility."""
+
+    def __init__(self, *args, **kwargs):
+        super(AggregateFileListTask, self).__init__(*args, **kwargs)
+        self.dqm_files = []
+        
+    def run(self):
+
+        db = DQMPipelineDatabase()
+        try:
+            recs = db.not_aggregated()
+            for r in recs:
+                self.dqm_files.append(r[1])
+        finally:
+            db.close()
+                
+    def output(self):
+        return [luigi.LocalTarget(o) for o in self.dqm_files]
+        

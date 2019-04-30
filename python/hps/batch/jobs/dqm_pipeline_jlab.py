@@ -253,7 +253,7 @@ class SubmitEvioJobsTask(luigi.Task):
     detector = luigi.Parameter(job_config().detector)
     steering = luigi.Parameter(default='/org/hps/steering/production/Run2016ReconPlusDataQuality.lcsim') # FIXME: default should be steering resource in git
     output_dir = luigi.Parameter(default=os.getcwd())
-    nevents = luigi.Parameter(default=-1)
+    nevents = luigi.IntParameter(default=-1)
     
     submit = luigi.BoolParameter(default=False)
 

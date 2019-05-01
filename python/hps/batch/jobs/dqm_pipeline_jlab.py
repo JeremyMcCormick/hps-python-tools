@@ -1,5 +1,5 @@
 import luigi
-import os, glob, shutil, getpass, logging, subprocess
+import os, glob, shutil, getpass, logging, subprocess, datetime
 import MySQLdb
 
 from hps.batch.config import job as job_config
@@ -7,6 +7,10 @@ from hps.batch.config import dqm as dqm_config
 
 from hps.batch.util import run_process
 from hps.batch.auger import AugerWriter
+
+# TODO:
+# - task to relaunch failed jobs and reset db state
+# - snippet of ROOT code to check that file is valid
 
 class EvioFileUtility:
     """EVIO file utility to get various information from the file name."""
@@ -84,7 +88,7 @@ class DQMPipelineDatabase:
         self.cur.execute(qry)
         
     def jobs(self):
-        qry = "select ID, job_id, job_status from pipeline where job_id not null and job_status != 'C'"
+        qry = "select ID, job_id, job_status, dqm_file_path from pipeline where job_id not null and job_status != 'C'"
         self.cur.execute(qry)
         return self.cur.fetchall()
     
@@ -96,6 +100,11 @@ class DQMPipelineDatabase:
         qry = "select ID, dqm_file_path from pipeline where job_status = 'C' and aggregated = 0"
         self.cur.execute(qry)
         return self.cur.fetchall()
+    
+    def no_error(self, ID):
+        qry = "select ID, error from pipeline where id = %d" % ID
+        self.cur.execute(qry)
+        return self.cur.fetchall()[0][1] is None
 
 def dqm_to_evio(dqm_file_name):
     dirname = os.path.dirname(dqm_file_name)
@@ -113,6 +122,9 @@ class EvioFileScannerTask(luigi.Task):
 
     evio_dir = luigi.Parameter(default=os.getcwd())
 
+    # Files must be newer than this date.  Default is a date before HPS existed. :)
+    date = luigi.DateParameter(default=datetime.date(1999, 1, 1))
+        
     def __init__(self, *args, **kwargs):
         super(EvioFileScannerTask, self).__init__(*args, **kwargs)
         self.output_files = []
@@ -122,19 +134,23 @@ class EvioFileScannerTask(luigi.Task):
 
         try:
             evio_glob = glob.glob('%s/*.evio.*' % (self.evio_dir))
-            for e in evio_glob:
-                evio_info = EvioFileUtility(e)
-                run_number = evio_info.run_number()
-                seq = evio_info.seq()
-                if not db.exists(evio_info.run_number(), evio_info.seq()):
-                    self.output_files.append(e)
-                    logging.info("Inserting (file, run_number, seq) = ('%s', %d, %d) into db ..." % (evio_info.path, run_number, seq))
-                    db.insert(evio_info.path, run_number, seq)
-                    db.commit()
+            for e in evio_glob:                
+                file_date = datetime.date.fromtimestamp(os.path.getmtime(e))
+                if file_date >= self.date:                
+                    evio_info = EvioFileUtility(e)
+                    run_number = evio_info.run_number()
+                    seq = evio_info.seq()
+                    if not db.exists(evio_info.run_number(), evio_info.seq()):
+                        self.output_files.append(e)
+                        logging.info("Inserting (file, run_number, seq) = ('%s', %d, %d) into db ..." % (evio_info.path, run_number, seq))
+                        db.insert(evio_info.path, run_number, seq)
+                        db.commit()
+                    else:
+                        logging.info("EVIO file '%s' with run %d and seq %d is already in database!" % (evio_info.path, run_number, seq))
                 else:
-                    logging.info("EVIO file '%s' with run %d and seq %d is already in database!" % (evio_info.path, run_number, seq))
+                    logging.debug("Skipping EVIO file '%s' which was created before %s." % (e, self.date))
             if not len(self.output_files):
-                raise Exception('No new EVIO files found!')
+                logging.warning('No new EVIO files found!')
         finally:
             db.close()
 
@@ -142,10 +158,12 @@ class EvioFileScannerTask(luigi.Task):
         return [luigi.LocalTarget(o) for o in self.output_files]
 
 auger_tmpl = """<Request>
-<Email email="${user}" request="false" job="false"/>
+<Email email="${user}" request="false" job="true"/>
 <Project name="hps"/>
 <Track name="${track}"/>
 <Name name="${jobname}"/>
+<Memory space="3000" unit="MB"/>
+<TimeLimit time="3" unit="hours"/>
 <Command><![CDATA[
 ${command}
 ]]></Command>
@@ -157,17 +175,19 @@ ${command}
 </Request>"""
 
 class SubmitEvioJobsTask(luigi.Task):
-    """Submits the Auger batch jobs to run recon and DQM on input EVIO files."""
+    """Submits sequentially the Auger batch jobs to run recon and DQM on input EVIO files."""
 
     detector = luigi.Parameter(job_config().detector)
     steering = luigi.Parameter(default='/org/hps/steering/production/Run2016ReconPlusDataQuality.lcsim')
     output_dir = luigi.Parameter(default=os.getcwd())
     nevents = luigi.IntParameter(default=-1)
     
-    submit = luigi.BoolParameter(default=False)    
+    submit = luigi.BoolParameter(default=False)
     track = luigi.Parameter(default='debug')
     log_dir = luigi.Parameter(default=os.getcwd())
     auger_file = luigi.Parameter(default='auger.xml')
+    
+    email = luigi.Parameter(default=None)
     
     def requires(self):
         return EvioFileScannerTask()
@@ -197,9 +217,12 @@ class SubmitEvioJobsTask(luigi.Task):
                                           '--run-number %d' % evio_info.run_number(),
                                           '--nevents %d' % self.nevents,
                                           '--output-ext .root']))
-                
+         
+                email = self.email
+                if email == 'None':
+                    email = '%s@jlab.org' % getpass.getuser()
                 parameters = {
-                        'user': '%s@jlab.org' % getpass.getuser(),
+                        'user': email,
                         'track': self.track,
                         'jobname': 'DQM_%06d_%d' % (evio_info.run_number(), evio_info.seq()),
                         'command': '\n'.join(cmdlines),
@@ -219,7 +242,8 @@ class SubmitEvioJobsTask(luigi.Task):
                         if "<jsub>" in l:
                             job_id = int(l[l.find('<jobIndex>')+10:l.find('</jobIndex>')])
                     if job_id == -1:
-                        logging.warning("Failed to submit '%s' batch job!" % evio_info.path)
+                        logging.critical("Failed to submit '%s' batch job!" % evio_info.path)
+                        db.error(ID, 'Failed to submit batch job.')
                     else:
                         db.submit(ID, job_id, '%s.root' % evio_info.dqm_name())
                         db.commit()
@@ -246,7 +270,11 @@ class AggregateFileListTask(luigi.Task):
         try:
             recs = db.unaggregated()
             for r in recs:
-                self.dqm_files.append(r[1])
+                dqm_file = r[1]
+                if db.no_error(r[1]):
+                    self.dqm_files.append(r[1])
+                else:
+                    logging.critical("Skipping DQM file '%s' with a job error!" % dqm_file)
         finally:
             db.close()
                 
@@ -330,9 +358,12 @@ class HistAddTask(luigi.Task):
             db.close()
     
 class UpdateJobStatus(luigi.Task):
-    """Standalone task to update the status of the batch jobs in the database."""
-        
+    """Standalone task to update the status of the batch jobs in the database and check for job errors."""
+    
+    # TODO: maybe add 'E' for error and 'U' for unknown
     statuses = ('C','R','Q','H','A')
+    
+    check_dqm_exists = luigi.BoolParameter(default=False)
     
     def run(self):
         
@@ -341,19 +372,33 @@ class UpdateJobStatus(luigi.Task):
         try:
             jobs = db.jobs()
             for job in jobs:
-               cur_status = job[2]
-               cmd = 'jobstat -j %d' % job[1]
-               logging.debug("Checking status of job %d." % job[1])
-               p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-               for l in p.stdout:
-                   l = l.decode().strip()
-                   if l in UpdateJobStatus.statuses:
-                       new_status = l
-                       if new_status in UpdateJobStatus.statuses:
-                           if new_status != cur_status:
-                               db.update_job_status(job[0], new_status)
-                               db.commit()
-                               logging.info("Updated status of job %d to '%s' from '%s'." % (job[1], new_status, cur_status))
+                ID = job[0]
+                job_id = job[1]
+                cur_status = job[2]
+                dqm_file = job[3]
+                cmd = 'jobstat -j %d' % job[1]
+                logging.debug("Checking status of job %d." % job_id)
+                p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                for l in p.stdout:
+                    l = l.decode().strip()
+                    if l in UpdateJobStatus.statuses:
+                        new_status = l
+                        if new_status in UpdateJobStatus.statuses:
+                            if new_status != cur_status:
+                                db.update_job_status(ID, new_status)
+                                db.commit()
+                                logging.info("Updated status of job %d to '%s' from '%s'." % (job_id, new_status, cur_status))
+                                if self.check_dqm_exists and new_status == 'C':
+                                    if not os.path.exists(dqm_file):
+                                        db.error(ID, 'DQM file missing after batch job completed.')
+                    else:
+                        # Handle case where job disappears from Auger and no status is returned.
+                        if (l is None or l == "") and os.path.exists(dqm_file):
+                            db.update_job_status(ID, 'C')
+                            if os.path.getsize(dqm_file) == 0:
+                                db.error(ID, "DQM file has size zero after batch job completed.")
+                                db.commit()
+                                                    
         finally:
             db.close()
-            
+    

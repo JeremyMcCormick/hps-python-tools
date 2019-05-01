@@ -89,3 +89,5 @@ class dqm(luigi.Config):
     conda_dir = luigi.Parameter(default='/group/hps/hps_soft/anaconda')
     root_dir = luigi.Parameter(default='/apps/root/6.12.06')
     hpspythontools_dir = luigi.Parameter(default='/group/hps/hps_soft/hps-python-tools')
+    
+    luigi_cfg = luigi.Parameter(default='luigi.cfg')

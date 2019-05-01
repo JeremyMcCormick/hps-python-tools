@@ -423,12 +423,13 @@ class EvioToLcioBaseTask(luigi.Task):
     write_raw_output = luigi.BoolParameter(default=False)
     raw_output_file = luigi.Parameter(default='raw.slcio') # usually not used
     output_ext = luigi.Parameter(default='.slcio') # override for .root or .aida
+    java_opts = luigi.Parameter(default='-XX:+UseSerialGC -Xmx3G')
     
     def run(self):
         config = hps_config()
         bin_jar = config.hps_java_bin_jar
         
-        cmd = ['java', '-cp', bin_jar, 'org.hps.evio.EvioToLcio']
+        cmd = ['java', self.java_opts, '-cp', bin_jar, 'org.hps.evio.EvioToLcio']
 
         cmd.append('-d %s' % self.detector)
         if self.run_number != -1:

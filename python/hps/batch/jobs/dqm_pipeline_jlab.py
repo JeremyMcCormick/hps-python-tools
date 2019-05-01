@@ -231,7 +231,7 @@ class SubmitEvioJobsTask(luigi.Task):
                 with open(jobscript, 'w') as jobout:
                     for cmd in cmdlines:
                         jobout.write(cmd + '\n')
-                os.chmod(jobscript, stat.S_IEXEC)
+                os.chmod(jobscript, 0o755)
                                     
                 parameters = {
                         'user': email,

@@ -1,5 +1,5 @@
 import luigi
-import os, glob, shutil, getpass, logging, subprocess, datetime
+import os, glob, shutil, getpass, logging, subprocess, datetime, stat
 import MySQLdb
 
 from hps.batch.config import job as job_config
@@ -231,13 +231,14 @@ class SubmitEvioJobsTask(luigi.Task):
                 with open(jobscript, 'w') as jobout:
                     for cmd in cmdlines:
                         jobout.write(cmd + '\n')
+                os.chmod(jobscript, stat.S_IEXEC)
                                     
                 parameters = {
                         'user': email,
                         'track': self.track,
                         'jobname': jobname,
                         'jobscript': jobscript,
-                        'command': 'exec ./jobscript.sh',
+                        'command': './jobscript.sh',
                         'output_src': '%s.root' % evio_info.dqm_name(),
                         'output_dest': '%s/%s.root' % (self.output_dir, evio_info.dqm_name()),
                         'logdir': self.log_dir

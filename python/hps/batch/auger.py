@@ -1,6 +1,6 @@
 from string import Template
 import luigi
-import socket, getpass, os
+import getpass, os, subprocess
 
 from hps.batch.writer import JSONTask
 from hps.batch.examples import ExampleTask
@@ -8,11 +8,8 @@ from hps.batch.examples import ExampleTask
 auger_tmpl = """<Request>
 <Email email="${user}" request="false" job="false"/>
 <Project name="hps"/>
-<Track name="simulation"/>
+<Track name="${track}"/>
 <Name name="${name}"/>
-<Variable name="PYTHONPATH" value="${pythonpath}"/>
-<Variable name="LD_LIBRARY_PATH" value="${ldpath}"/>
-<Variable name="PATH" value="${path}"/>
 <Command><![CDATA[
 ${command}
 ]]></Command>
@@ -26,27 +23,29 @@ ${command}
 
 class AugerWriter:
     
-    def __init__(self, outfile = 'auger.xml', parameters = {}):
+    def __init__(self, tmpl = auger_tmpl, outfile = 'auger.xml', parameters = {}):
+        self.tmpl = tmpl
         self.outfile = outfile
         self.parameters = parameters
         
     def write(self):
-        tmpl = Template(auger_tmpl)
-        print(repr(tmpl))
+        tmpl = Template(self.tmpl)
+        #print(repr(tmpl))
         subs = tmpl.substitute(self.parameters)
-        print(subs)
+        #print(subs)
         with open(self.outfile, 'w') as augerout:
             augerout.write(subs)
             
-class AugerTask(luigi.Task):
+class AugerXMLTask(luigi.Task):
     
     auger_file = luigi.Parameter(default='auger.xml')
-    check_host = luigi.BoolParameter(default=False)
+    #check_host = luigi.BoolParameter(default=False)
     output_src = luigi.Parameter()
     output_dest = luigi.Parameter()
+    track = luigi.Parameter(default='debug')
     
     def __init__(self, *args, **kwargs):
-        super(AugerTask, self).__init__(*args, **kwargs)
+        super(AugerXMLTask, self).__init__(*args, **kwargs)
         self.task = None
 
     def set_task(self, task):
@@ -61,11 +60,12 @@ class AugerTask(luigi.Task):
         if self.task is None:
             raise Exception('AugerTask requires luigi task to be set.')
         self.json_file = self.input()
-        if self.check_host:
-            if 'jlab.org' not in socket.gethostname():
-                raise Exception('Host is not at JLab!')
+        #if self.check_host:
+        #    if 'jlab.org' not in socket.gethostname():
+        #        raise Exception('Host is not at JLab!')
         p = {
                 'user': '%s@jlab.org' % getpass.getuser(),
+                'track': self.track,
                 'name': self.task.__class__.__name__,
                 'command': 'cmdline.py %s' % self.json_file.path,
                 'pythonpath': os.getenv('PYTHONPATH'),
@@ -84,7 +84,39 @@ class AugerTask(luigi.Task):
     def output(self):
         return luigi.LocalTarget(self.auger_file)
 
+class AugerSubmitTask(luigi.Task):
+
+    submit = luigi.BoolParameter(default=True)
+    
+    def set_task(self, task):
+        self.task = task
+        
+    def requires(self):
+        task = AugerXMLTask()
+        task.set_task(self.task)
+        return task
+    
+    """
+    jsub -xml auger.xml
+    Parsing script ... (it may take while)
+    <jsub><request><index>31211294</index><jobIndex>66331253</jobIndex></request></jsub>
+    """
+    def run(self):
+        for i in luigi.task.flatten(self.input(self)):
+            cmd = ['jsub', '-xml', i.path]
+            print("Auger cmd: %s" % ' '.join(cmd))
+            if self.submit:
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+                job_id = -1
+                for l in p.stdout:
+                    l = l.decode().strip()
+                    if "<jsub>" in l:
+                        job_id = int(l[l.find('<jobIndex>')+10:l.find('</jobIndex>')])
+                print("Submitted '%s' with job ID %d" % (str(cmd), job_id))
+            else:
+                print("Job not submitted!")
+
 if __name__ == '__main__':
-    task = AugerTask(output_src='output.txt', output_dest='/dummy/output.txt')
+    task = AugerSubmitTask(submit=False)
     task.set_task(ExampleTask())
     luigi.build([task], workers=1, local_scheduler=True)

@@ -22,7 +22,7 @@ Features:
 """
 
 import luigi
-import os, shutil
+import os, shutil, stat
 
 from hps.batch.util import run_process
 from hps.batch.config import hps as hps_config
@@ -118,7 +118,7 @@ class SlicStdhepBaseTask(luigi.Task):
                              (lcdd_path, self.physics_list, init_macro.name, stdhep_file, self.output_file, self.nevents))
         run_script.close()
         
-        os.chmod(run_script.name, 0700)
+        os.chmod(run_script.name, stat.S_IEXEC)
         
         cmd = './%s' % run_script.name
 
@@ -167,7 +167,7 @@ class SlicBaseTask(luigi.Task):
                           self.gen_macro, self.output_file, self.nevents))
         run_script.close()
         
-        os.chmod(run_script.name, 0700)
+        os.chmod(run_script.name, stat.S_IEXEC)
         
         cmd = './%s' % run_script.name
 
@@ -222,7 +222,7 @@ class HpsSimBaseTask(luigi.Task):
         run_script.write('hps-sim %s\n' % run_macro.name)
         run_script.close()
         
-        os.chmod(run_script.name, 0700)
+        os.chmod(run_script.name, stat.S_IEXEC)
         
         cmd = './%s' % run_script.name
         
@@ -423,12 +423,13 @@ class EvioToLcioBaseTask(luigi.Task):
     write_raw_output = luigi.BoolParameter(default=False)
     raw_output_file = luigi.Parameter(default='raw.slcio') # usually not used
     output_ext = luigi.Parameter(default='.slcio') # override for .root or .aida
+    java_opts = luigi.Parameter(default='-XX:+UseSerialGC -Xmx2G')
     
     def run(self):
         config = hps_config()
         bin_jar = config.hps_java_bin_jar
         
-        cmd = ['java', '-cp', bin_jar, 'org.hps.evio.EvioToLcio']
+        cmd = [hps_config().java, self.java_opts, '-cp', bin_jar, 'org.hps.evio.EvioToLcio']
 
         cmd.append('-d %s' % self.detector)
         if self.run_number != -1:

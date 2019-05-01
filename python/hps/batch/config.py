@@ -21,6 +21,7 @@ class hps(luigi.Config):
     hps_fieldmaps_dir = luigi.Parameter(default='fieldmap')
     hps_java_bin_jar = luigi.Parameter(default='hps-java-bin.jar')
     lcio_jar = luigi.Parameter(default='lcio-bin.jar')
+    java = luigi.Parameter(default='java')
    
     fieldmap_symlink_name = 'fieldmap'
     

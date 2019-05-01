@@ -211,7 +211,6 @@ class SubmitEvioJobsTask(luigi.Task):
                 cmdlines.append(' '.join(['luigi',
                                           '--module hps.batch.tasks',
                                           'EvioToLcioBaseTask',
-                                          '--java /apps/scicomp/java/jdk1.8/bin/java',
                                           """--evio-files '["%s"]'""" % evio_info.path,
                                           '--detector %s' % self.detector,
                                           '--output-file %s' % evio_info.dqm_name(),

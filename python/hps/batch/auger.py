@@ -1,6 +1,6 @@
 from string import Template
 import luigi
-import socket, getpass, os, subprocess
+import getpass, os, subprocess
 
 from hps.batch.writer import JSONTask
 from hps.batch.examples import ExampleTask
@@ -30,9 +30,9 @@ class AugerWriter:
         
     def write(self):
         tmpl = Template(self.tmpl)
-        print(repr(tmpl))
+        #print(repr(tmpl))
         subs = tmpl.substitute(self.parameters)
-        print(subs)
+        #print(subs)
         with open(self.outfile, 'w') as augerout:
             augerout.write(subs)
             

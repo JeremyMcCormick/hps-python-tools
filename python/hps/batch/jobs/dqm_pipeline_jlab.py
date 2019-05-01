@@ -170,7 +170,7 @@ ${command}
 ]]></Command>
 <Job>
 <Output src="${output_src}" dest="${output_dest}"/>
-<Input src="${jobscript}" dest="jobscript.sh"
+<Input src="${jobscript}" dest="jobscript.sh"/>
 <Stderr dest="${logdir}/${jobname}.err"/>
 <Stdout dest="${logdir}/${jobname}.out"/>
 </Job>

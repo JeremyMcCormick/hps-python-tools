@@ -219,7 +219,7 @@ class SubmitEvioJobsTask(luigi.Task):
                                           '--output-ext .root']))
          
                 email = self.email
-                if email == 'None':
+                if email == None:
                     email = '%s@jlab.org' % getpass.getuser()
                 parameters = {
                         'user': email,

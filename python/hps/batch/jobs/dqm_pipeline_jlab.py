@@ -228,7 +228,7 @@ class SubmitEvioJobsTask(luigi.Task):
                     email = '%s@jlab.org' % getpass.getuser()
                 jobname = 'DQM_%06d_%d' % (evio_info.run_number(), evio_info.seq())
                 jobscript = '%s/%s.sh' % (self.work_dir, jobname)
-                with open(jobscript) as jobout:
+                with open(jobscript, 'w') as jobout:
                     for cmd in cmdlines:
                         jobout.write(cmd + '\n')
                                     

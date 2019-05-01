@@ -163,7 +163,7 @@ auger_tmpl = """<Request>
 <Track name="${track}"/>
 <Name name="${jobname}"/>
 <OS name="centos7"/>
-<Memory space="3000" unit="MB"/>
+<Memory space="${memory}" unit="MB"/>
 <TimeLimit time="3" unit="hours"/>
 <Command><![CDATA[
 ${command}
@@ -182,16 +182,14 @@ class SubmitEvioJobsTask(luigi.Task):
     detector = luigi.Parameter(job_config().detector)
     steering = luigi.Parameter(default='/org/hps/steering/production/Run2016ReconPlusDataQuality.lcsim')
     output_dir = luigi.Parameter(default=os.getcwd())
-    nevents = luigi.IntParameter(default=-1)
-    
+    nevents = luigi.IntParameter(default=-1)    
     submit = luigi.BoolParameter(default=False)
     track = luigi.Parameter(default='debug')
     log_dir = luigi.Parameter(default=os.getcwd())
-    auger_file = luigi.Parameter(default='auger.xml')
-    
-    email = luigi.Parameter(default=None)
-    
+    auger_file = luigi.Parameter(default='auger.xml')    
+    email = luigi.Parameter(default=None)    
     work_dir = luigi.Parameter(default=os.getcwd())
+    memory = luigi.IntParameter(default=4000)
     
     def requires(self):
         return EvioFileScannerTask()
@@ -239,6 +237,7 @@ class SubmitEvioJobsTask(luigi.Task):
                         'jobname': jobname,
                         'jobscript': jobscript,
                         'command': './jobscript.sh',
+                        'memory': self.memory,
                         'output_src': '%s.root' % evio_info.dqm_name(),
                         'output_dest': '%s/%s.root' % (self.output_dir, evio_info.dqm_name()),
                         'logdir': self.log_dir

@@ -211,6 +211,7 @@ class SubmitEvioJobsTask(luigi.Task):
                 cmdlines.append(' '.join(['luigi',
                                           '--module hps.batch.tasks',
                                           'EvioToLcioBaseTask',
+                                          '--java /apps/scicomp/java/jdk1.8/bin/java',
                                           """--evio-files '["%s"]'""" % evio_info.path,
                                           '--detector %s' % self.detector,
                                           '--output-file %s' % evio_info.dqm_name(),
@@ -404,8 +405,8 @@ class UpdateJobStatus(luigi.Task):
                                     if not os.path.exists(dqm_file):
                                         db.error(ID, 'DQM file missing after batch job completed.')
                     else:
-                        # Handle case where job disappears from Auger and no status is returned.
-                        if (l is None or l == "") and os.path.exists(dqm_file):
+                        # Handle case where job disappears from Auger and no status is returned but job completed okay.
+                        if (l is None or l == "") and os.path.exists(dqm_file) and os.path.getsize(dqm_file) > 0:
                             db.update_job_status(ID, 'C')
                             if os.path.getsize(dqm_file) == 0:
                                 db.error(ID, "DQM file has size zero after batch job completed.")

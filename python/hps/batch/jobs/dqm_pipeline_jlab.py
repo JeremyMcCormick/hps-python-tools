@@ -162,6 +162,7 @@ auger_tmpl = """<Request>
 <Project name="hps"/>
 <Track name="${track}"/>
 <Name name="${jobname}"/>
+<OS name="centos7"/>
 <Memory space="3000" unit="MB"/>
 <TimeLimit time="3" unit="hours"/>
 <Command><![CDATA[
@@ -169,6 +170,7 @@ ${command}
 ]]></Command>
 <Job>
 <Output src="${output_src}" dest="${output_dest}"/>
+<Input src="${jobscript}" dest="jobscript.sh"
 <Stderr dest="${logdir}/${jobname}.err"/>
 <Stdout dest="${logdir}/${jobname}.out"/>
 </Job>
@@ -189,6 +191,8 @@ class SubmitEvioJobsTask(luigi.Task):
     
     email = luigi.Parameter(default=None)
     
+    work_dir = luigi.Parameter(default=os.getcwd())
+    
     def requires(self):
         return EvioFileScannerTask()
 
@@ -202,7 +206,7 @@ class SubmitEvioJobsTask(luigi.Task):
                 evio_info = EvioFileUtility(i.path)
                 ID = db.find_evio(evio_info.path)[0][0]
                 
-                cmdlines = ['exec bash']
+                cmdlines = ['#!/user/bin/bash']
                 cmdlines.append('source %s/bin/activate python3' % dqm_config().conda_dir)
                 cmdlines.append('export PYTHONPATH=%s/python' % dqm_config().hpspythontools_dir)
                 cmdlines.append('export LUIGI_CONFIG_PATH=%s' % dqm_config().luigi_cfg)
@@ -216,16 +220,24 @@ class SubmitEvioJobsTask(luigi.Task):
                                           '--steering %s' % self.steering,
                                           '--run-number %d' % evio_info.run_number(),
                                           '--nevents %d' % self.nevents,
-                                          '--output-ext .root']))
+                                          '--output-ext .root',
+                                          '--local-scheduler']))
          
                 email = self.email
                 if email == None:
                     email = '%s@jlab.org' % getpass.getuser()
+                jobname = 'DQM_%06d_%d' % (evio_info.run_number(), evio_info.seq())
+                jobscript = '%s/%s.sh' % (self.work_dir, jobname)
+                with open(jobscript) as jobout:
+                    for cmd in cmdlines:
+                        jobout.write(cmd + '\n')
+                                    
                 parameters = {
                         'user': email,
                         'track': self.track,
-                        'jobname': 'DQM_%06d_%d' % (evio_info.run_number(), evio_info.seq()),
-                        'command': '\n'.join(cmdlines),
+                        'jobname': jobname,
+                        'jobscript': jobscript,
+                        'command': 'exec ./jobscript.sh',
                         'output_src': '%s.root' % evio_info.dqm_name(),
                         'output_dest': '%s/%s.root' % (self.output_dir, evio_info.dqm_name()),
                         'logdir': self.log_dir
@@ -360,7 +372,7 @@ class HistAddTask(luigi.Task):
 class UpdateJobStatus(luigi.Task):
     """Standalone task to update the status of the batch jobs in the database and check for job errors."""
     
-    # TODO: maybe add 'E' for error and 'U' for unknown
+    # TODO: maybe add 'E' for error and 'U' for unknown or 'unsubmitted', which could be the initial default in the db
     statuses = ('C','R','Q','H','A')
     
     check_dqm_exists = luigi.BoolParameter(default=False)

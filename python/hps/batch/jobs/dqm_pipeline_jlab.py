@@ -319,8 +319,11 @@ class AggregateTask(luigi.Task):
         self.ran = True
         yield tasks
         
-    def output(self):
-        return [luigi.LocalTarget(o) for o in self.output_files]
+    def complete(self):
+        return self.ran
+        
+    #def output(self):
+    #    return [luigi.LocalTarget(o) for o in self.output_files]
     
 class CopyToDataDirTask(luigi.Task):
     """Task to copy aggregated ROOT DQM data files to the web drop dir."""        

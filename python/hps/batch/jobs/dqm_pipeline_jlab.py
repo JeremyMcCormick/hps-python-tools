@@ -411,8 +411,10 @@ class UpdateJobStatusTask(luigi.Task):
                 cmd = 'jobstat -j %d' % job[1]
                 logging.debug("Checking status of job %d." % job_id)
                 p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if p.stdout is None or p.stdout == '':
+                if p.stdout is None:
                     print('>>>> No output from jobstat')
+                if p.stdout == '':
+                    print('>>>> Empty jobstat')
                 for l in p.stdout:
                     l = l.decode().strip()
                     if l in UpdateJobStatusTask.statuses:

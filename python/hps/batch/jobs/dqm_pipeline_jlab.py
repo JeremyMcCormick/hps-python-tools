@@ -63,7 +63,7 @@ class DQMPipelineDatabase:
         self.conn.commit()
 
     def submit(self, ID, job_id, dqm_file_path):
-        qry = "update pipeline set job_id = %d, dqm_file_path = '%s' where id = %d" % (job_id, dqm_file_path, ID)
+        qry = "update pipeline set job_id = %d, dqm_file_path = '%s', job_status = 'A' where id = %d" % (job_id, dqm_file_path, ID)
         self.cur.execute(qry)
 
     def close(self):

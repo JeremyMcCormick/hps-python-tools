@@ -8,6 +8,8 @@ from hps.batch.config import dqm as dqm_config
 from hps.batch.util import run_process
 from hps.batch.auger import AugerWriter
 
+logging.getLogger(__name__).setLevel(logging.DEBUG)
+
 # TODO:
 # - task to relaunch failed jobs and reset db state
 # - snippet of ROOT code to check that file is valid (prob just open with TFile)

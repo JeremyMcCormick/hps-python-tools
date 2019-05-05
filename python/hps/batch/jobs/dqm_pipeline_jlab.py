@@ -88,7 +88,7 @@ class DQMPipelineDatabase:
         self.cur.execute(qry)
         
     def jobs(self):
-        qry = "select ID, job_id, job_status, dqm_file_path from pipeline where job_id not null and job_status != 'C'"
+        qry = "select ID, job_id, job_status, dqm_file_path from pipeline where job_id is not null and job_status != 'C'"
         self.cur.execute(qry)
         return self.cur.fetchall()
     

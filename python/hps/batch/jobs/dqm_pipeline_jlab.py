@@ -289,7 +289,6 @@ class AggregateTask(luigi.Task):
     
     def run(self):
         
-        logging.debug('>>>> AggregateTask.run')    
         if self.ran:
             return
         
@@ -331,8 +330,7 @@ class CopyToDataDirTask(luigi.Task):
         return AggregateTask()
     
     def run(self):
-        logging.debug('>>>> CopyToDataDirTask.run')
-        for i in luigi.task.flatten(self.input(self)):
+        for i in luigi.task.flatten(self.input()):
             target = '%s/%s' % (self.data_dir, os.path.basename(i.path))
             logging.info("Copying '%s' to '%s' ..." % (i.path, target))
             shutil.copyfile(i.path, target)           
@@ -356,8 +354,6 @@ class HistAddTask(luigi.Task):
         super(HistAddTask, self).__init__(*args, **kwargs)
                       
     def run(self):
-
-        logging.debug('>>>> HistAddTask.run')
         
         db = DQMPipelineDatabase()
 
@@ -424,7 +420,7 @@ class UpdateJobStatusTask(luigi.Task):
                 if status == 'C' or new_status is None:
                     if os.path.exists(dqm_file):  
                         if os.path.getsize(dqm_file) < self.dqm_min_size:
-                            db.error(ID, "DQM file size too small after batch job completed.")
+                            db.error(ID, "DQM file size too small after batch job completed.")                            
                         elif status != 'C':
                             db.update_job_status(ID, 'C')                        
                             logging.info("Found valid DQM file '%s' and updated job status to complete." % dqm_file)                        

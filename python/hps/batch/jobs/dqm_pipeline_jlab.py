@@ -302,12 +302,12 @@ class AggregateTask(luigi.Task):
                 run_number = r[1]
                 dqm_file = r[2]
                 if db.no_error(ID):
-                    if dqm_files[run_number] is None:
+                    if run_number not in dqm_files:
                         dqm_files[run_number] = []
                     dqm_files[run_number].append(dqm_file)
                     logging.info("Queuing '%s' from run %d for aggregation." % (dqm_file, run_number))
                 else:
-                    logging.critical("Skipping DQM file '%s' with a job error!" % dqm_file)
+                    logging.warning("Skipping DQM file '%s' with a job error!" % dqm_file)
         finally:
             db.close()
                 

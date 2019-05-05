@@ -313,7 +313,7 @@ class AggregateTask(luigi.Task):
                 
         tasks = []
 
-        for run_number, filelist in dqm_files.iteritems():
+        for run_number, filelist in dqm_files.items():
             targetfile = '%s/hps_%06d_dqm.root' % (self.output_dir, run_number)
             tasks.append(HistAddTask(run_number=run_number, targetfile=targetfile, dqm_files=filelist))
             self.output_files.append(targetfile)

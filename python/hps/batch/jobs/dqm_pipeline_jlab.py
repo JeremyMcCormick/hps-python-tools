@@ -269,6 +269,7 @@ class SubmitEvioJobsTask(luigi.Task):
             db.close()
             
     def output(self):
+        # FIXME: This output is prob not needed.
         return luigi.LocalTarget(self.auger_file)
             
 class AggregateTask(luigi.Task):
@@ -325,8 +326,8 @@ class AggregateTask(luigi.Task):
     def output(self):
         return [luigi.LocalTarget(o) for o in self.output_files]
     
-"""
 class CopyToDataDirTask(luigi.Task):
+    
     data_dir = luigi.Parameter(default='/group/hps/dqm-web/data')
  
     def requires(self):
@@ -340,7 +341,6 @@ class CopyToDataDirTask(luigi.Task):
             
     def output(self):
         [luigi.LocalTarget('%s/%s' % (self.data_dir, os.path.basename(i.path))) for i in self.input()]
-"""
     
 class HistAddTask(luigi.Task):
     """Task to run the ROOT 'hadd' utility to aggregate DQM files by run number.

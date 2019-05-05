@@ -97,7 +97,7 @@ class DQMPipelineDatabase:
         self.cur.execute(qry)
         
     def unaggregated(self):
-        qry = "select ID, dqm_file_path from pipeline where job_status = 'C' and aggregated = 0"
+        qry = "select ID, run_number, dqm_file_path from pipeline where job_status = 'C' and aggregated = 0"
         self.cur.execute(qry)
         return self.cur.fetchall()
     
@@ -268,35 +268,7 @@ class SubmitEvioJobsTask(luigi.Task):
             
     def output(self):
         return luigi.LocalTarget(self.auger_file)
-    
-class AggregateFileListTask(luigi.Task):
-    """Task to get a list of files to aggregate using the ROOT utility."""
-
-    def __init__(self, *args, **kwargs):
-        super(AggregateFileListTask, self).__init__(*args, **kwargs)
-        self.dqm_files = []
-        
-    def requires(self):
-        UpdateJobStatusTask()
-        
-    def run(self):
-        logging.debug('>>>> AggregateFileListTask.run')
-        db = DQMPipelineDatabase()
-        try:
-            recs = db.unaggregated()
-            for r in recs:
-                dqm_file = r[1]
-                if db.no_error(r[1]):
-                    self.dqm_files.append(r[1])
-                    logging.info("Queuing '%s' for aggregation." % r[1])
-                else:
-                    logging.critical("Skipping DQM file '%s' with a job error!" % dqm_file)
-        finally:
-            db.close()
-                
-    def output(self):
-        return [luigi.LocalTarget(o) for o in self.dqm_files]
-        
+            
 class AggregateTask(luigi.Task):
     """Task that will aggregate ROOT QDM files into a single output file by run number.
     
@@ -309,22 +281,36 @@ class AggregateTask(luigi.Task):
         super(AggregateTask, self).__init__(*args, **kwargs)
         self.ran = False
         self.output_files = []
-
+        
     def requires(self):
-        return AggregateFileListTask()
+        return UpdateJobStatusTask()
     
     def run(self):
+        
         logging.debug('>>>> AggregateTask.run')    
         if self.ran:
             return
-        tasks = []
+        
+        db = DQMPipelineDatabase()
         dqm_files = {}
-        for i in luigi.task.flatten(self.input()):
-            dqm_file = i.path
-            run_number = run_from_dqm(dqm_file)
-            if run_number not in dqm_files:
-                 dqm_files[run_number] = []
-            dqm_files[run_number].append(dqm_file)
+        try:
+            recs = db.unaggregated()
+            for r in recs:
+                ID = r[0]
+                run_number = r[1]
+                dqm_file = r[2]
+                if db.no_error(ID):
+                    if dqm_files[run_number] is None:
+                        dqm_files[run_number] = []
+                    dqm_files[run_number].append(dqm_file)
+                    logging.info("Queuing '%s' from run %d for aggregation." % (dqm_file, run_number))
+                else:
+                    logging.critical("Skipping DQM file '%s' with a job error!" % dqm_file)
+        finally:
+            db.close()
+                
+        tasks = []
+
         for run_number, filelist in dqm_files:
             targetfile = '%s/hps_%06d_dqm.root' % (self.output_dir, run_number)
             tasks.append(HistAddTask(run_number=run_number, targetfile=targetfile, dqm_files=filelist))
@@ -366,7 +352,7 @@ class HistAddTask(luigi.Task):
     
     def __init__(self, *args, **kwargs):
         super(HistAddTask, self).__init__(*args, **kwargs)
-        
+                      
     def run(self):
 
         logging.debug('>>>> HistAddTask.run')
@@ -392,6 +378,9 @@ class HistAddTask(luigi.Task):
                 logging.info("DQM file '%s' is aggregated." % f)
         finally:
             db.close()
+            
+    def output(self):
+        return luigi.LocalTarget(self.targetfile)
     
 class UpdateJobStatusTask(luigi.Task):
     """Task to update the status of the batch jobs in the database and check for job errors."""

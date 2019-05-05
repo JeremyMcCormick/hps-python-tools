@@ -402,7 +402,7 @@ class UpdateJobStatusTask(luigi.Task):
         
         try:
             jobs = db.jobs()
-            print('JOBS: ' % str(jobs))
+            print('JOBS: %s' % str(jobs))
             for job in jobs:
                 ID = job[0]
                 job_id = job[1]

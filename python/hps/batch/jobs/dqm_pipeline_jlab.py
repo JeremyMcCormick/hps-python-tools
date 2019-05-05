@@ -350,7 +350,7 @@ class CopyToDataDirTask(luigi.Task):
             shutil.copyfile(i.path, target)           
             
     def output(self):
-        [luigi.LocalTarget('%s/%s' % (self.data_dir, os.path.basename(i.path))) for i in self.input(self)]
+        [luigi.LocalTarget('%s/%s' % (self.data_dir, os.path.basename(i.path))) for i in self.input()]
        
 class HistAddTask(luigi.Task):
     """Task to run the ROOT 'hadd' utility to aggregate DQM files by run number.

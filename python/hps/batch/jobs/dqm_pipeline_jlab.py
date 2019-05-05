@@ -10,7 +10,7 @@ from hps.batch.auger import AugerWriter
 
 # TODO:
 # - task to relaunch failed jobs and reset db state
-# - snippet of ROOT code to check that file is valid
+# - snippet of ROOT code to check that file is valid (prob just open with TFile)
 
 class EvioFileUtility:
     """EVIO file utility to get various information from the file name."""
@@ -276,6 +276,9 @@ class AggregateFileListTask(luigi.Task):
         super(AggregateFileListTask, self).__init__(*args, **kwargs)
         self.dqm_files = []
         
+    def requires(self):
+        UpdateJobStatusTask()
+        
     def run(self):
 
         db = DQMPipelineDatabase()
@@ -285,6 +288,7 @@ class AggregateFileListTask(luigi.Task):
                 dqm_file = r[1]
                 if db.no_error(r[1]):
                     self.dqm_files.append(r[1])
+                    logging.info("Queuing '%s' for aggregation." % r[1])
                 else:
                     logging.critical("Skipping DQM file '%s' with a job error!" % dqm_file)
         finally:
@@ -322,14 +326,27 @@ class AggregateTask(luigi.Task):
             dqm_files[run_number].append(dqm_file)
         for run_number, filelist in dqm_files:
             targetfile = '%s/hps_%06d_dqm.root' % (self.output_dir, run_number)
-            #self.output_files.append(targetfile)
             tasks.append(HistAddTask(run_number=run_number, targetfile=targetfile, dqm_files=filelist))
+            self.output_files.append(targetfile)
         self.ran = True
         yield tasks
-
-    #def output(self):
-    #    return [luigi.LocalTarget(o) for o in self.output_files]
-
+        
+    def output(self):
+        return [luigi.LocalTarget(o) for o in self.output_files]
+    
+class CopyToDataDirTask(luigi.Task):
+    """Task to copy aggregated ROOT DQM data files to the web drop dir."""        
+    data_dir = luigi.Parameter(default='/group/hps/dqm-web/data')
+ 
+    def requires(self):
+        return AggregateTask()
+    
+    def run(self):
+        for i in luigi.task.flatten(self.input(self)):
+            target = '%s/%s' % (self.data_dir, os.path.basename(i.path))
+            logging.info("Copying '%s' to '%s' ..." % (i.path, target))
+            shutil.copyfile(i.path, target)           
+       
 class HistAddTask(luigi.Task):
     """Task to run the ROOT 'hadd' utility to aggregate DQM files by run number.
     
@@ -369,8 +386,8 @@ class HistAddTask(luigi.Task):
         finally:
             db.close()
     
-class UpdateJobStatus(luigi.Task):
-    """Standalone task to update the status of the batch jobs in the database and check for job errors."""
+class UpdateJobStatusTask(luigi.Task):
+    """Task to update the status of the batch jobs in the database and check for job errors."""
     
     # TODO: maybe add 'E' for error and 'U' for unknown or 'unsubmitted', which could be the initial default in the db
     statuses = ('C','R','Q','H','A')
@@ -393,9 +410,9 @@ class UpdateJobStatus(luigi.Task):
                 p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 for l in p.stdout:
                     l = l.decode().strip()
-                    if l in UpdateJobStatus.statuses:
+                    if l in UpdateJobStatusTask.statuses:
                         new_status = l
-                        if new_status in UpdateJobStatus.statuses:
+                        if new_status in UpdateJobStatusTask.statuses:
                             if new_status != cur_status:
                                 db.update_job_status(ID, new_status)
                                 db.commit()

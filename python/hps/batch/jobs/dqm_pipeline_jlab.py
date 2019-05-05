@@ -323,9 +323,10 @@ class AggregateTask(luigi.Task):
     def complete(self):
         return self.ran
         
-    def output(self):
-        return [luigi.LocalTarget(o) for o in self.output_files]
-    
+    #def output(self):
+    #    return [luigi.LocalTarget(o) for o in self.output_files]
+   
+""" 
 class CopyToDataDirTask(luigi.Task):
     
     data_dir = luigi.Parameter(default='/group/hps/dqm-web/data')
@@ -334,6 +335,8 @@ class CopyToDataDirTask(luigi.Task):
         return AggregateTask()
     
     def run(self):
+        print(">>>> CopyToDataDirTask")
+        print("INPUTS: %s" % str([i.path for i in luigi.task.flatten(self.input())]))
         for i in luigi.task.flatten(self.input()):
             target = '%s/%s' % (self.data_dir, os.path.basename(i.path))
             logging.info("Copying '%s' to '%s' ..." % (i.path, target))
@@ -341,7 +344,8 @@ class CopyToDataDirTask(luigi.Task):
             
     def output(self):
         [luigi.LocalTarget('%s/%s' % (self.data_dir, os.path.basename(i.path))) for i in self.input()]
-    
+"""   
+ 
 class HistAddTask(luigi.Task):
     """Task to run the ROOT 'hadd' utility to aggregate DQM files by run number.
     

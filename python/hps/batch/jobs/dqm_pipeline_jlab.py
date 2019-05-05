@@ -8,12 +8,6 @@ from hps.batch.config import dqm as dqm_config
 from hps.batch.util import run_process
 from hps.batch.auger import AugerWriter
 
-#logging.getLogger(__name__).setLevel(logging.DEBUG)
-
-# TODO:
-# - task to relaunch failed jobs and reset db state
-# - snippet of ROOT code to check that file is valid (prob just open with TFile)
-
 class EvioFileUtility:
     """EVIO file utility to get various information from the file name."""
 
@@ -269,7 +263,7 @@ class SubmitEvioJobsTask(luigi.Task):
             db.close()
             
     def output(self):
-        # FIXME: This output is prob not needed.
+        # FIXME: This output is probably not needed.
         return luigi.LocalTarget(self.auger_file)
             
 class AggregateTask(luigi.Task):
@@ -322,29 +316,6 @@ class AggregateTask(luigi.Task):
         
     def complete(self):
         return self.ran
-        
-    #def output(self):
-    #    return [luigi.LocalTarget(o) for o in self.output_files]
-   
-""" 
-class CopyToDataDirTask(luigi.Task):
-    
-    data_dir = luigi.Parameter(default='/group/hps/dqm-web/data')
- 
-    def requires(self):
-        return AggregateTask()
-    
-    def run(self):
-        print(">>>> CopyToDataDirTask")
-        print("INPUTS: %s" % str([i.path for i in luigi.task.flatten(self.input())]))
-        for i in luigi.task.flatten(self.input()):
-            target = '%s/%s' % (self.data_dir, os.path.basename(i.path))
-            logging.info("Copying '%s' to '%s' ..." % (i.path, target))
-            shutil.copyfile(i.path, target)           
-            
-    def output(self):
-        [luigi.LocalTarget('%s/%s' % (self.data_dir, os.path.basename(i.path))) for i in self.input()]
-"""   
  
 class HistAddTask(luigi.Task):
     """Task to run the ROOT 'hadd' utility to aggregate DQM files by run number.

@@ -8,7 +8,7 @@ from hps.batch.config import dqm as dqm_config
 from hps.batch.util import run_process
 from hps.batch.auger import AugerWriter
 
-logging.getLogger(__name__).setLevel(logging.DEBUG)
+#logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 # TODO:
 # - task to relaunch failed jobs and reset db state
@@ -104,9 +104,9 @@ class DQMPipelineDatabase:
         return self.cur.fetchall()
     
     def no_error(self, ID):
-        qry = "select ID, error from pipeline where id = %d" % ID
+        qry = "select ID from pipeline where id = %d and job_status = 'E'" % ID
         self.cur.execute(qry)
-        return self.cur.fetchall()[0][1] is None
+        return len(self.cur.fetchall()) == 0
 
 def dqm_to_evio(dqm_file_name):
     dirname = os.path.dirname(dqm_file_name)
@@ -427,8 +427,11 @@ class UpdateJobStatusTask(luigi.Task):
                             db.error(ID, "DQM file size too small after batch job completed.")
                         elif status != 'C':
                             db.update_job_status(ID, 'C')                        
-                            logging.info("Found valid DQM file '%s' and updated job status to '%s'." % (dqm_file, status))
-                        db.commit()
+                            logging.info("Found valid DQM file '%s' and updated job status to complete." % dqm_file)                        
+                    else:
+                        if status == 'C':
+                            db.error('DQM file does not exist after batch job completed.')
+                    db.commit()    
                                                     
         finally:
             db.close()
@@ -436,4 +439,4 @@ class UpdateJobStatusTask(luigi.Task):
         self.ran = True
         
     def complete(self):
-        return self.ran    
+        return self.ran

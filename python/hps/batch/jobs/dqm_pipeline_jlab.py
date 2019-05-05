@@ -390,6 +390,10 @@ class UpdateJobStatusTask(luigi.Task):
     
     check_dqm_exists = luigi.BoolParameter(default=False)
     
+    def __init__(self, *args, **kwargs):
+        super(UpdateJobStatusTask, self).__init__(*args, **kwargs)
+        self.ran = False
+    
     def run(self):
         
         logging.debug('>>>> UpdateJobStatusTask.run')
@@ -398,6 +402,7 @@ class UpdateJobStatusTask(luigi.Task):
         
         try:
             jobs = db.jobs()
+            print('JOBS: ' % str(jobs))
             for job in jobs:
                 ID = job[0]
                 job_id = job[1]
@@ -428,4 +433,9 @@ class UpdateJobStatusTask(luigi.Task):
                                                     
         finally:
             db.close()
+            
+        self.ran = True
+        
+    def complete(self):
+        return self.ran
     

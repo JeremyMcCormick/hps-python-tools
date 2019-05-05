@@ -82,7 +82,7 @@ class DQMPipelineDatabase:
         return self.cur.fetchall()
 
     def error(self, ID, error_msg):
-        qry = "update pipeline set error_msg = '%s' where id = %d" % (error_msg, ID)
+        qry = "update pipeline set error_msg = '%s', job_status = 'E' where id = %d" % (error_msg, ID)
         self.cur.execute(qry)
         
     def aggregate(self, ID):
@@ -90,7 +90,7 @@ class DQMPipelineDatabase:
         self.cur.execute(qry)
         
     def jobs(self):
-        qry = "select ID, job_id, job_status, dqm_file_path from pipeline where job_id is not null and job_status != 'C'"
+        qry = "select ID, job_id, job_status, dqm_file_path from pipeline where job_id is not null and not (job_status in ('C','E'))"
         self.cur.execute(qry)
         return self.cur.fetchall()
     
@@ -387,55 +387,48 @@ class HistAddTask(luigi.Task):
 class UpdateJobStatusTask(luigi.Task):
     """Task to update the status of the batch jobs in the database and check for job errors."""
     
-    # TODO: maybe add 'E' for error and 'U' for unknown or 'unsubmitted', which could be the initial default in the db
-    statuses = ('C','R','Q','H','A')
-    
-    check_dqm_exists = luigi.BoolParameter(default=False)
-    
+    auger_statuses = ('C','R','Q','H','A')
+ 
+    dqm_min_size = luigi.IntParameter(default=2e+6)
+       
     def __init__(self, *args, **kwargs):
         super(UpdateJobStatusTask, self).__init__(*args, **kwargs)
         self.ran = False
     
     def run(self):
-        
-        logging.debug('>>>> UpdateJobStatusTask.run')
-        
+                
         db = DQMPipelineDatabase()
         
         try:
             jobs = db.jobs()
-            print('JOBS: %s' % str(jobs))
             for job in jobs:
                 ID = job[0]
                 job_id = job[1]
-                cur_status = job[2]
+                status = job[2]
                 dqm_file = job[3]
                 cmd = 'jobstat -j %d' % job[1]
-                logging.debug("Checking status of job %d." % job_id)
+                logging.debug("Checking job %d with DQM file '%s' and current status '%s'" % (job_id, dqm_file, status))
                 p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if p.stdout is None:
-                    print('>>>> No output from jobstat')
-                if p.stdout == '':
-                    print('>>>> Empty jobstat')
-                for l in p.stdout:
-                    l = l.decode().strip()
-                    if l in UpdateJobStatusTask.statuses:
+                outlines = p.stdout.splitlines()
+                new_status = None
+                if len(outlines) > 0:
+                    l = outlines[0].decode().strip()
+                    if l in UpdateJobStatusTask.auger_statuses:
                         new_status = l
-                        if new_status in UpdateJobStatusTask.statuses:
-                            if new_status != cur_status:
+                        if new_status in UpdateJobStatusTask.auger_statuses:
+                            if new_status != status:
                                 db.update_job_status(ID, new_status)
                                 db.commit()
-                                logging.info("Updated status of job %d to '%s' from '%s'." % (job_id, new_status, cur_status))
-                                if self.check_dqm_exists and new_status == 'C':
-                                    if not os.path.exists(dqm_file):
-                                        db.error(ID, 'DQM file missing after batch job completed.')
-                    else:
-                        # Handle case where job disappears from Auger and no status is returned but job completed okay.
-                        if (l is None or l == "") and os.path.exists(dqm_file) and os.path.getsize(dqm_file) > 0:
-                            db.update_job_status(ID, 'C')
-                            if os.path.getsize(dqm_file) == 0:
-                                db.error(ID, "DQM file has size zero after batch job completed.")
-                                db.commit()
+                                logging.info("Updated status of job %d from '%s' to '%s'." % (job_id, status, new_status))
+                                status = new_status            
+                if status == 'C' or new_status is None:
+                    if os.path.exists(dqm_file):  
+                        if os.path.getsize(dqm_file) < self.dqm_min_size:
+                            db.error(ID, "DQM file size too small after batch job completed.")
+                        elif status != 'C':
+                            db.update_job_status(ID, 'C')                        
+                            logging.info("Found valid DQM file '%s' and updated job status to '%s'." % (dqm_file, status))
+                        db.commit()
                                                     
         finally:
             db.close()
@@ -443,5 +436,4 @@ class UpdateJobStatusTask(luigi.Task):
         self.ran = True
         
     def complete(self):
-        return self.ran
-    
+        return self.ran    

@@ -409,7 +409,7 @@ class UpdateJobStatusTask(luigi.Task):
                 cmd = 'jobstat -j %d' % job[1]
                 logging.debug("Checking job %d with DQM file '%s' and current status '%s'" % (job_id, dqm_file, status))
                 p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                outlines = p.stdout.splitlines()
+                outlines = p.stdout.readlines()
                 new_status = None
                 if len(outlines) > 0:
                     l = outlines[0].decode().strip()

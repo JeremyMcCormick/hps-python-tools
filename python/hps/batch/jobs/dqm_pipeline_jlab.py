@@ -1,5 +1,5 @@
 import luigi
-import os, glob, shutil, getpass, logging, subprocess, datetime, stat
+import os, glob, shutil, getpass, logging, subprocess, datetime
 import MySQLdb
 
 from hps.batch.config import job as job_config
@@ -280,7 +280,7 @@ class AggregateFileListTask(luigi.Task):
         UpdateJobStatusTask()
         
     def run(self):
-
+        logging.debug('>>>> AggregateFileListTask.run')
         db = DQMPipelineDatabase()
         try:
             recs = db.unaggregated()
@@ -314,6 +314,7 @@ class AggregateTask(luigi.Task):
         return AggregateFileListTask()
     
     def run(self):
+        logging.debug('>>>> AggregateTask.run')    
         if self.ran:
             return
         tasks = []
@@ -342,10 +343,14 @@ class CopyToDataDirTask(luigi.Task):
         return AggregateTask()
     
     def run(self):
+        logging.debug('>>>> CopyToDataDirTask.run')
         for i in luigi.task.flatten(self.input(self)):
             target = '%s/%s' % (self.data_dir, os.path.basename(i.path))
             logging.info("Copying '%s' to '%s' ..." % (i.path, target))
             shutil.copyfile(i.path, target)           
+            
+    def output(self):
+        [luigi.LocalTarget('%s/%s' % (self.data_dir, os.path.basename(i.path))) for i in self.input(self)]
        
 class HistAddTask(luigi.Task):
     """Task to run the ROOT 'hadd' utility to aggregate DQM files by run number.
@@ -363,6 +368,8 @@ class HistAddTask(luigi.Task):
         super(HistAddTask, self).__init__(*args, **kwargs)
         
     def run(self):
+
+        logging.debug('>>>> HistAddTask.run')
         
         db = DQMPipelineDatabase()
 
@@ -395,6 +402,8 @@ class UpdateJobStatusTask(luigi.Task):
     check_dqm_exists = luigi.BoolParameter(default=False)
     
     def run(self):
+        
+        logging.debug('>>>> UpdateJobStatusTask.run')
         
         db = DQMPipelineDatabase()
         

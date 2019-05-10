@@ -210,7 +210,8 @@ class SubmitEvioJobsTask(luigi.Task):
             with open(self.input().path) as infile:
                 for i in infile.readlines():
                     
-                    evio_info = EvioFileUtility(i.decode().strip())
+                    evio_info = EvioFileUtility(i.strip())
+                    logging.info("Processing EVIO file '%s'" % evio_info.path)
                     ID = db.find_evio(evio_info.path)[0][0]
                     
                     cmdlines = ['#!/usr/bin/bash']

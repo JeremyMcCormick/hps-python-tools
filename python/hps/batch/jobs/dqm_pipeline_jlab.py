@@ -8,6 +8,8 @@ from hps.batch.config import dqm as dqm_config
 from hps.batch.util import run_process
 from hps.batch.auger import AugerWriter
 
+from datetime.date import today
+
 class EvioFileUtility:
     """EVIO file utility to get various information from the file name."""
 
@@ -113,47 +115,6 @@ def dqm_to_evio(dqm_file_name):
 def run_from_dqm(dqm_file_name):
     basename = os.path.basename(dqm_file_name)
     return int(basename[5:11])
-
-# TODO:
-# - output file should be a text file containing a list of new EVIO files named using date params
-class EvioFileScannerOldTask(luigi.Task):
-
-    evio_dir = luigi.Parameter(default=os.getcwd())
-
-    # Files must be newer than this date.  Default is a date before HPS existed. :)
-    date = luigi.DateParameter(default=datetime.date(1999, 1, 1))
-            
-    def __init__(self, *args, **kwargs):
-        super(EvioFileScannerOldTask, self).__init__(*args, **kwargs)
-        self.output_files = []
-
-    def run(self):
-        db = DQMPipelineDatabase()
-
-        try:
-            evio_glob = glob.glob('%s/*.evio.*' % (self.evio_dir))
-            for e in evio_glob:                
-                file_date = datetime.date.fromtimestamp(os.path.getmtime(e))
-                if file_date >= self.date:                
-                    evio_info = EvioFileUtility(e)
-                    run_number = evio_info.run_number()
-                    seq = evio_info.seq()
-                    if not db.exists(evio_info.run_number(), evio_info.seq()):
-                        self.output_files.append(e)
-                        logging.info("Inserting (file, run_number, seq) = ('%s', %d, %d) into db ..." % (evio_info.path, run_number, seq))
-                        db.insert(evio_info.path, run_number, seq)
-                        db.commit()
-                    else:
-                        logging.info("EVIO file '%s' with run %d and seq %d is already in database!" % (evio_info.path, run_number, seq))
-                else:
-                    logging.debug("Skipping EVIO file '%s' which was created before %s." % (e, self.date))
-            if not len(self.output_files):
-                logging.warning('No new EVIO files found!')
-        finally:
-            db.close()
-                
-    def output(self):
-        return [luigi.LocalTarget(o) for o in self.output_files]
     
 class EvioFileScannerTask(luigi.Task):
 
@@ -164,6 +125,9 @@ class EvioFileScannerTask(luigi.Task):
             
     work_dir = luigi.Parameter(default=os.getcwd())
     
+    # Name of text file containing list of EVIO files that were found
+    data_file = luigi.Parameter(default='evio_files_%d-%02d-%02d.txt' % (today().year, today().month, today().day))
+    
     def __init__(self, *args, **kwargs):
         super(EvioFileScannerTask, self).__init__(*args, **kwargs)
         self.output_files = []
@@ -173,7 +137,7 @@ class EvioFileScannerTask(luigi.Task):
 
         try:
             evio_glob = glob.glob('%s/*.evio.*' % (self.evio_dir))
-            with open('%s/%s' % (self.work_dir, self.data_file_name()), 'w+') as outfile:
+            with open('%s/%s' % (self.work_dir, self.data_file), 'w+') as outfile:
                 for e in evio_glob:
                     file_date = datetime.date.fromtimestamp(os.path.getmtime(e))
                     if file_date >= self.date:                
@@ -198,12 +162,8 @@ class EvioFileScannerTask(luigi.Task):
             db.close()
                 
     def output(self):
-        return luigi.LocalTarget(self.data_file_name())
-    
-    def data_file_name(self):
-        today = datetime.date.today()
-        return 'evio_files_%d-%02d-%02d.txt' % (today.year, today.month, today.day)
-
+        return luigi.LocalTarget(self.data_file)
+        
 auger_tmpl = """<Request>
 <Email email="${user}" request="false" job="true"/>
 <Project name="hps"/>
@@ -223,8 +183,6 @@ ${command}
 </Job>
 </Request>"""
 
-# TODO:
-# - input should be file with list of EVIO files (from scanner)
 class SubmitEvioJobsTask(luigi.Task):
     """Submits sequentially the Auger batch jobs to run recon and DQM on input EVIO files."""
 

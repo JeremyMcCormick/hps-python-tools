@@ -1,6 +1,6 @@
 [
     {
-       "Module": "hps.batch.tasks",
+        "Module": "hps.batch.tasks",
         "Task": "SlicStdhepBaseTask",
         "Parameters": {
             "detector": "HPS-PhysicsRun2019-v0-4pt5",

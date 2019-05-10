@@ -1,4 +1,5 @@
 import luigi
+import datetime
 
 class DummyTask(luigi.Task):
 
@@ -87,4 +88,39 @@ class SimpleWrapperTask(luigi.WrapperTask):
         
     def output(self):
         return luigi.LocalTarget('herpderp.txt')
-        
+    
+class DynamicOutputTest(luigi.Task):
+    
+    outputs = []
+    
+    def run(self):
+        for s in ('herp', 'derp', 'blerp'):
+            self.outputs.append(s + '.txt')
+        for o in luigi.task.flatten(self.output()):
+            o.open('w').close()
+            
+    def output(self):
+        return [luigi.LocalTarget(o) for o in self.outputs]
+    
+class ReadDynamicOutputTest(luigi.Task):
+    
+    def requires(self):
+        return DynamicOutputTest()
+    
+    def run(self):
+        for o in luigi.task.flatten(self.input()):
+            print("got input: " + o.path)
+        self.output().open('w').close()
+    
+    def output(self):
+        return luigi.LocalTarget('ReadDynamicOutputTest.done')
+    
+class DateTask(luigi.Task):
+    
+    date = luigi.DateParameter(default=datetime.date.today())
+    
+    def run(self):
+        print(">>>> Date: %s" % str(self.date))
+    
+    
+    

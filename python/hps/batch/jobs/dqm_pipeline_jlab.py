@@ -114,15 +114,17 @@ def run_from_dqm(dqm_file_name):
     basename = os.path.basename(dqm_file_name)
     return int(basename[5:11])
 
-class EvioFileScannerTask(luigi.Task):
+# TODO:
+# - output file should be a text file containing a list of new EVIO files named using date params
+class EvioFileScannerOldTask(luigi.Task):
 
     evio_dir = luigi.Parameter(default=os.getcwd())
 
     # Files must be newer than this date.  Default is a date before HPS existed. :)
     date = luigi.DateParameter(default=datetime.date(1999, 1, 1))
-        
+            
     def __init__(self, *args, **kwargs):
-        super(EvioFileScannerTask, self).__init__(*args, **kwargs)
+        super(EvioFileScannerOldTask, self).__init__(*args, **kwargs)
         self.output_files = []
 
     def run(self):
@@ -149,9 +151,58 @@ class EvioFileScannerTask(luigi.Task):
                 logging.warning('No new EVIO files found!')
         finally:
             db.close()
-
+                
     def output(self):
         return [luigi.LocalTarget(o) for o in self.output_files]
+    
+class EvioFileScannerTask(luigi.Task):
+
+    evio_dir = luigi.Parameter(default=os.getcwd())
+
+    # Files must be newer than this date.  Default is a date before HPS existed. :)
+    date = luigi.DateParameter(default=datetime.date(1999, 1, 1))
+            
+    work_dir = luigi.Parameter(default=os.getcwd())
+    
+    def __init__(self, *args, **kwargs):
+        super(EvioFileScannerTask, self).__init__(*args, **kwargs)
+        self.output_files = []
+
+    def run(self):
+        db = DQMPipelineDatabase()
+
+        try:
+            evio_glob = glob.glob('%s/*.evio.*' % (self.evio_dir))
+            with open('%s/%s' % (self.work_dir, self.data_file_name(), 'w+')) as outfile:
+                for e in evio_glob:
+                    file_date = datetime.date.fromtimestamp(os.path.getmtime(e))
+                    if file_date >= self.date:                
+                        evio_info = EvioFileUtility(e)
+                        run_number = evio_info.run_number()
+                        seq = evio_info.seq()
+                        if not db.exists(evio_info.run_number(), evio_info.seq()):
+                            self.output_files.append(e)
+                            logging.info("Inserting (file, run_number, seq) = ('%s', %d, %d) into db ..." % (evio_info.path, run_number, seq))
+                            db.insert(evio_info.path, run_number, seq)
+                            db.commit()
+                        else:
+                            logging.info("EVIO file '%s' with run %d and seq %d is already in database!" % (evio_info.path, run_number, seq))
+                        logging.info("Appending '%s' to '%s'" % (e, outfile.name))
+                        outfile.write(e + '\n')
+                    else:
+                        logging.debug("Skipping EVIO file '%s' which was created before %s." % (e, self.date))
+            
+            if not len(self.output_files):
+                logging.warning('No new EVIO files found!')
+        finally:
+            db.close()
+                
+    def output(self):
+        return luigi.LocalTarget(self.data_file_name())
+    
+    def data_file_name(self):
+        today = datetime.date.today()
+        return 'evio_files_%d-%02d-%02d.txt' % (today.year, today.month, today.day)
 
 auger_tmpl = """<Request>
 <Email email="${user}" request="false" job="true"/>
@@ -172,6 +223,8 @@ ${command}
 </Job>
 </Request>"""
 
+# TODO:
+# - input should be file with list of EVIO files (from scanner)
 class SubmitEvioJobsTask(luigi.Task):
     """Submits sequentially the Auger batch jobs to run recon and DQM on input EVIO files."""
 
@@ -195,69 +248,71 @@ class SubmitEvioJobsTask(luigi.Task):
         db = DQMPipelineDatabase()
         
         try:
-            for i in luigi.task.flatten(self.input()):
-
-                evio_info = EvioFileUtility(i.path)
-                ID = db.find_evio(evio_info.path)[0][0]
-                
-                cmdlines = ['#!/usr/bin/bash']
-                cmdlines.append('source %s/bin/activate python3' % dqm_config().conda_dir)
-                cmdlines.append('export PYTHONPATH=%s/python' % dqm_config().hpspythontools_dir)
-                cmdlines.append('export LUIGI_CONFIG_PATH=%s' % dqm_config().luigi_cfg)
-                cmdlines.append(' '.join(['luigi',
-                                          '--module hps.batch.tasks',
-                                          'EvioToLcioBaseTask',
-                                          """--evio-files '["%s"]'""" % evio_info.path,
-                                          '--detector %s' % self.detector,
-                                          '--output-file %s' % evio_info.dqm_name(),
-                                          '--resource',
-                                          '--steering %s' % self.steering,
-                                          '--run-number %d' % evio_info.run_number(),
-                                          '--nevents %d' % self.nevents,
-                                          '--output-ext .root',
-                                          '--local-scheduler']))
-         
-                email = self.email
-                if email == None:
-                    email = '%s@jlab.org' % getpass.getuser()
-                jobname = 'DQM_%06d_%d' % (evio_info.run_number(), evio_info.seq())
-                jobscript = '%s/%s.sh' % (self.work_dir, jobname)
-                with open(jobscript, 'w+') as jobout:
-                    for cmd in cmdlines:
-                        jobout.write(cmd + '\n')
-                os.chmod(jobscript, 0o755)
-                                    
-                parameters = {
-                        'user': email,
-                        'track': self.track,
-                        'jobname': jobname,
-                        'jobscript': jobscript,
-                        'command': './jobscript.sh',
-                        'memory': self.memory,
-                        'output_src': '%s.root' % evio_info.dqm_name(),
-                        'output_dest': '%s/%s.root' % (self.output_dir, evio_info.dqm_name()),
-                        'logdir': self.log_dir
-                }
-                
-                AugerWriter(tmpl=auger_tmpl, parameters=parameters).write()
-                
-                cmd = ['jsub', '-xml', self.auger_file]
-                if self.submit:
-                    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
-                    job_id = -1
-                    for l in p.stdout:
-                        l = l.decode().strip()
-                        if "<jsub>" in l:
-                            job_id = int(l[l.find('<jobIndex>')+10:l.find('</jobIndex>')])
-                    if job_id == -1:
-                        logging.critical("Failed to submit '%s' batch job!" % evio_info.path)
-                        db.error(ID, 'Failed to submit batch job.')
+            # EvioFileScannerTask returns a text file with a list of EVIO files.
+            with open(self.input()) as infile:
+                for i in infile.readlines():
+                    
+                    evio_info = EvioFileUtility(i.decode().strip())
+                    ID = db.find_evio(evio_info.path)[0][0]
+                    
+                    cmdlines = ['#!/usr/bin/bash']
+                    cmdlines.append('source %s/bin/activate python3' % dqm_config().conda_dir)
+                    cmdlines.append('export PYTHONPATH=%s/python' % dqm_config().hpspythontools_dir)
+                    cmdlines.append('export LUIGI_CONFIG_PATH=%s' % dqm_config().luigi_cfg)
+                    cmdlines.append(' '.join(['luigi',
+                                              '--module hps.batch.tasks',
+                                              'EvioToLcioBaseTask',
+                                              """--evio-files '["%s"]'""" % evio_info.path,
+                                              '--detector %s' % self.detector,
+                                              '--output-file %s' % evio_info.dqm_name(),
+                                              '--resource',
+                                              '--steering %s' % self.steering,
+                                              '--run-number %d' % evio_info.run_number(),
+                                              '--nevents %d' % self.nevents,
+                                              '--output-ext .root',
+                                              '--local-scheduler']))
+             
+                    email = self.email
+                    if email == None:
+                        email = '%s@jlab.org' % getpass.getuser()
+                    jobname = 'DQM_%06d_%d' % (evio_info.run_number(), evio_info.seq())
+                    jobscript = '%s/%s.sh' % (self.work_dir, jobname)
+                    with open(jobscript, 'w+') as jobout:
+                        for cmd in cmdlines:
+                            jobout.write(cmd + '\n')
+                    os.chmod(jobscript, 0o755)
+                                        
+                    parameters = {
+                            'user': email,
+                            'track': self.track,
+                            'jobname': jobname,
+                            'jobscript': jobscript,
+                            'command': './jobscript.sh',
+                            'memory': self.memory,
+                            'output_src': '%s.root' % evio_info.dqm_name(),
+                            'output_dest': '%s/%s.root' % (self.output_dir, evio_info.dqm_name()),
+                            'logdir': self.log_dir
+                    }
+                    
+                    AugerWriter(tmpl=auger_tmpl, parameters=parameters).write()
+                    
+                    cmd = ['jsub', '-xml', self.auger_file]
+                    if self.submit:
+                        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
+                        job_id = -1
+                        for l in p.stdout:
+                            l = l.decode().strip()
+                            if "<jsub>" in l:
+                                job_id = int(l[l.find('<jobIndex>')+10:l.find('</jobIndex>')])
+                        if job_id == -1:
+                            logging.critical("Failed to submit '%s' batch job!" % evio_info.path)
+                            db.error(ID, 'Failed to submit batch job.')
+                        else:
+                            db.submit(ID, job_id, '%s.root' % evio_info.dqm_name())
+                            db.commit()
+                            logging.info("Submitted '%s' with job ID %d" % (str(cmd), job_id))
                     else:
-                        db.submit(ID, job_id, '%s.root' % evio_info.dqm_name())
-                        db.commit()
-                        logging.info("Submitted '%s' with job ID %d" % (str(cmd), job_id))
-                else:
-                    logging.warning("Job not submitted because submit is set to false!")
+                        logging.warning("Job not submitted because submit is set to false!")
                 
         finally:
             db.close()

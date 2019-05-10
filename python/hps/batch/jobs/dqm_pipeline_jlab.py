@@ -207,7 +207,7 @@ class SubmitEvioJobsTask(luigi.Task):
         
         try:
             # EvioFileScannerTask returns a text file with a list of EVIO files.
-            with open(self.input()) as infile:
+            with open(self.input().path) as infile:
                 for i in infile.readlines():
                     
                     evio_info = EvioFileUtility(i.decode().strip())

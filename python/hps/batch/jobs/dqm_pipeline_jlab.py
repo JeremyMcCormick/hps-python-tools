@@ -287,7 +287,7 @@ class SubmitEvioJobsTask(luigi.Task):
             db.close()
             
     def output(self):
-        # FIXME: This output is probably not needed.
+        # FIXME: This output is prob not needed.
         return luigi.LocalTarget(self.auger_file)
             
 class AggregateTask(luigi.Task):

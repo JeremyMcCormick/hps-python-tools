@@ -145,16 +145,12 @@ class EvioFileScannerTask(luigi.Task):
                         run_number = evio_info.run_number()
                         seq = evio_info.seq()
                         if not db.exists(evio_info.run_number(), evio_info.seq()):
-                            self.output_files.append(e)
-                            logging.info("Inserting (file, run_number, seq) = ('%s', %d, %d) into db ..." % (evio_info.path, run_number, seq))
-                            db.insert(evio_info.path, run_number, seq)
-                            db.commit()
+                            outfile.write(e + '\n')
                         else:
                             logging.info("EVIO file '%s' with run %d and seq %d is already in database!" % (evio_info.path, run_number, seq))
                         logging.info("Appending '%s' to '%s'" % (e, outfile.name))
-                        outfile.write(e + '\n')
                     else:
-                        logging.debug("Skipping EVIO file '%s' which was created before %s." % (e, self.date))
+                        logging.debug("Skipping EVIO file '%s' which was created before %s." % (e, self.max_date))
             
             if not len(self.output_files):
                 logging.warning('No new EVIO files found!')
@@ -184,7 +180,10 @@ ${command}
 </Request>"""
 
 class SubmitEvioJobsTask(luigi.Task):
-    """Submits sequentially the Auger batch jobs to run recon and DQM on input EVIO files."""
+    """Submits sequentially the Auger batch jobs to run recon and DQM on input EVIO files.
+    
+    This task also inserts EVIO files from the input list into the DQM pipeline database.    
+    """
 
     detector = luigi.Parameter(job_config().detector)
     steering = luigi.Parameter(default='/org/hps/steering/production/Run2016ReconPlusDataQuality.lcsim')
@@ -211,7 +210,18 @@ class SubmitEvioJobsTask(luigi.Task):
                 for i in infile.readlines():
                     
                     evio_info = EvioFileUtility(i.strip())
+                    run_number = evio_info.run_number()
+                    seq = evio_info.seq()
                     logging.info("Processing EVIO file '%s'" % evio_info.path)
+
+                    if not db.exists(evio_info.run_number(), evio_info.seq()):
+                        logging.info("Inserting (file, run_number, seq) = ('%s', %d, %d) into DQM pipeline" % (evio_info.path, run_number, seq))
+                        db.insert(evio_info.path, run_number, seq)
+                        db.commit()
+                    else:
+                        logging.info("EVIO file '%s' with run %d and seq %d is already in database!" % (evio_info.path, run_number, seq))
+                        continue
+                                        
                     ID = db.find_evio(evio_info.path)[0][0]
                     
                     cmdlines = ['#!/usr/bin/bash']

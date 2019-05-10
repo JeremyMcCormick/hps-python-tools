@@ -173,7 +173,7 @@ class EvioFileScannerTask(luigi.Task):
 
         try:
             evio_glob = glob.glob('%s/*.evio.*' % (self.evio_dir))
-            with open('%s/%s' % (self.work_dir, self.data_file_name(), 'w+')) as outfile:
+            with open('%s/%s' % (self.work_dir, self.data_file_name()), 'w+') as outfile:
                 for e in evio_glob:
                     file_date = datetime.date.fromtimestamp(os.path.getmtime(e))
                     if file_date >= self.date:                

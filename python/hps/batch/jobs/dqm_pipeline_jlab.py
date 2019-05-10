@@ -8,7 +8,7 @@ from hps.batch.config import dqm as dqm_config
 from hps.batch.util import run_process
 from hps.batch.auger import AugerWriter
 
-from datetime.date import today
+from datetime import date
 
 class EvioFileUtility:
     """EVIO file utility to get various information from the file name."""
@@ -121,12 +121,12 @@ class EvioFileScannerTask(luigi.Task):
     evio_dir = luigi.Parameter(default=os.getcwd())
 
     # Files must be newer than this date.  Default is a date before HPS existed. :)
-    date = luigi.DateParameter(default=datetime.date(1999, 1, 1))
+    max_date = luigi.DateParameter(default=datetime.date(1999, 1, 1))
             
     work_dir = luigi.Parameter(default=os.getcwd())
     
     # Name of text file containing list of EVIO files that were found
-    data_file = luigi.Parameter(default='evio_files_%d-%02d-%02d.txt' % (today().year, today().month, today().day))
+    data_file = luigi.Parameter(default='evio_files_%d-%02d-%02d.txt' % (date.today().year, date.today().month, date.today().day))
     
     def __init__(self, *args, **kwargs):
         super(EvioFileScannerTask, self).__init__(*args, **kwargs)
@@ -140,7 +140,7 @@ class EvioFileScannerTask(luigi.Task):
             with open('%s/%s' % (self.work_dir, self.data_file), 'w+') as outfile:
                 for e in evio_glob:
                     file_date = datetime.date.fromtimestamp(os.path.getmtime(e))
-                    if file_date >= self.date:                
+                    if file_date >= self.max_date:                
                         evio_info = EvioFileUtility(e)
                         run_number = evio_info.run_number()
                         seq = evio_info.seq()
